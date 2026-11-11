@@ -1,40 +1,34 @@
-const std = @import("std");
 const builtin = @import("builtin");
+const std = @import("std");
+
+const root = @import("src/root.zig");
+
+// This file is imported directly by consumer build scripts via
+// `@import("zig_bundle")`, so it re-exports the public configuration API.
+pub const add = root.add;
+
+pub const App = root.App;
+pub const BundleStep = root.BundleStep;
+pub const Compression = root.Compression;
+pub const Formats = root.Formats;
+pub const Input = root.Input;
+pub const Options = root.Options;
+pub const Resource = root.Resource;
+pub const TarGzOptions = root.TarGzOptions;
+pub const ZipOptions = root.ZipOptions;
 
 pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const strip = b.option(bool, "strip", "Strip debug symbols") orelse false;
 
-    const exe_mod = b.createModule(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-        .strip = strip,
+    const test_step = b.step("test", "Run unit tests");
+    const tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/root.zig"),
+            .target = b.graph.host,
+            .optimize = optimize,
+        }),
     });
-
-    const exe = b.addExecutable(.{
-        .name = "zig-bundle",
-        .root_module = exe_mod,
-    });
-
-    b.installArtifact(exe);
-
-    const run_step = b.step("run", "Run zig-bundle");
-
-    const run_cmd = b.addRunArtifact(exe);
-
-    run_cmd.step.dependOn(b.getInstallStep());
-
-    if (@hasDecl(std.Build.Step.Run, "addPassthruArgs")) {
-        run_cmd.addPassthruArgs();
-    } else {
-        if (b.args) |args| {
-            run_cmd.addArgs(args);
-        }
-    }
-
-    run_step.dependOn(&run_cmd.step);
+    test_step.dependOn(&b.addRunArtifact(tests).step);
 }
 
 comptime {
