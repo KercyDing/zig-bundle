@@ -29,11 +29,16 @@ group example {
 
     [help] Package the example application as a tar.gz
     [fail] Example tar.gz package failed.
-    targz():
-        cd examples && zig build package -Dformat=targz
+    tar_gz():
+        cd examples && zig build package -Dformat=tar_gz
 
     [help] Package the example application for Linux as a DEB
     [fail] Example DEB package failed.
     deb():
         cd examples && zig build package -Dformat=deb -Dtarget=x86_64-linux-gnu
+
+    [help] Package the example application as a Windows Setup.exe
+    [fail] Example Setup.exe package failed.
+    setup_exe():
+        cd examples && zig build package -Dformat=setup_exe -Dtarget=x86_64-windows-gnu
 }

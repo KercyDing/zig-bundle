@@ -2,7 +2,7 @@ const std = @import("std");
 
 const bundle = @import("bundle");
 
-const Format = enum { zip, targz, deb };
+const Format = enum { zip, tar_gz, deb, setup_exe };
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -20,8 +20,9 @@ pub fn build(b: *std.Build) void {
 
     const formats: bundle.Formats = switch (format) {
         .zip => .{ .zip = .{} },
-        .targz => .{ .tar_gz = .{} },
+        .tar_gz => .{ .tar_gz = .{} },
         .deb => .{ .deb = .{} },
+        .setup_exe => .{ .setup_exe = .{} },
     };
 
     b.installArtifact(exe);
