@@ -1,0 +1,17 @@
+.{
+    .name = .hello_bundle,
+    .version = "0.1.0",
+    .fingerprint = 0xcd6bc8ba27398b0a,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .zig_bundle = .{
+            .path = "../",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "assets",
+    },
+}
