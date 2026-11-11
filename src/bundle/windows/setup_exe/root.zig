@@ -1,7 +1,8 @@
+//! Packs the installer runtime, manifest, and payload into setup.exe.
 const std = @import("std");
 
-const resources = @import("../common/resources.zig");
-const tar_gz = @import("../common/tar_gz.zig");
+const resources = @import("../../common/resources.zig");
+const tar_gz = @import("../../common/tar_gz.zig");
 
 const Io = std.Io;
 

@@ -1,3 +1,4 @@
+//! Windows installer and uninstaller runtime.
 const std = @import("std");
 
 const gui = @import("gui.zig");

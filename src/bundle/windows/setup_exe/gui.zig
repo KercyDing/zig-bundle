@@ -1,3 +1,4 @@
+//! Win32 installer and uninstaller UI.
 const std = @import("std");
 
 const windows = std.os.windows;

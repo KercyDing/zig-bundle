@@ -1,3 +1,4 @@
+//! Example application that reads bundled resources.
 const std = @import("std");
 
 pub fn main(init: std.process.Init) !void {

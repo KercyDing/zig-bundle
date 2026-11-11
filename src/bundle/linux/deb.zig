@@ -1,3 +1,4 @@
+//! Native Debian package writer.
 const std = @import("std");
 
 const icons = @import("../common/icons.zig");

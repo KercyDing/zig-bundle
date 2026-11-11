@@ -1,3 +1,4 @@
+//! Public configuration types accepted by `bundle.add`.
 const std = @import("std");
 
 const capabilities = @import("capabilities.zig");

@@ -1,3 +1,4 @@
+//! Host and target compatibility checks for bundle formats.
 const std = @import("std");
 
 pub const Format = enum { zip, tar_gz, deb, setup_exe };

@@ -1,3 +1,4 @@
+//! Deterministic tar.gz archive writer.
 const std = @import("std");
 
 const resources = @import("resources.zig");

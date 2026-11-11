@@ -1,3 +1,4 @@
+//! Icon parsing and ICO generation.
 const std = @import("std");
 
 const Io = std.Io;

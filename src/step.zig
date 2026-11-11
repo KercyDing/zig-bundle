@@ -1,3 +1,4 @@
+//! Build step that stages resources and produces bundle artifacts.
 const std = @import("std");
 
 const bundle = @import("bundle.zig");
@@ -49,9 +50,9 @@ pub fn add(b: *std.Build, options: Options) *BundleStep {
     if (self.settings.setup_exe != null) {
         const target = options.input.executable.root_module.resolved_target orelse b.graph.host;
         const write_files = b.addWriteFiles();
-        const runtime_source = write_files.add("setup_runtime.zig", @embedFile("windows/setup_runtime.zig"));
-        _ = write_files.add("gui.zig", @embedFile("windows/gui.zig"));
-        const runtime_manifest = write_files.add("setup.manifest", @embedFile("windows/setup.manifest"));
+        const runtime_source = write_files.add("setup_runtime.zig", @embedFile("bundle/windows/setup_exe/runtime.zig"));
+        _ = write_files.add("gui.zig", @embedFile("bundle/windows/setup_exe/gui.zig"));
+        const runtime_manifest = write_files.add("setup.manifest", @embedFile("bundle/windows/setup_exe/setup.manifest"));
         const runtime = b.addExecutable(.{
             .name = "zig-bundle-setup",
             .root_module = b.createModule(.{
