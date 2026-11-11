@@ -1,0 +1,14 @@
+.{
+    .name = .zig_bundle,
+    .version = "0.0.1",
+    .fingerprint = 0xe92be97a61f22f36,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "LICENSE",
+        "README.md",
+    },
+}
