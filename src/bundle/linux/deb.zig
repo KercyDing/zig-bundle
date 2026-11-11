@@ -8,8 +8,8 @@ const Io = std.Io;
 
 pub const Options = struct {
     depends: []const []const u8 = &.{},
-    section: ?[]const u8 = null,
-    priority: ?[]const u8 = null,
+    section: ?[]const u8 = "utils",
+    priority: ?[]const u8 = "optional",
 };
 
 pub const Config = struct {

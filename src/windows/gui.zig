@@ -89,12 +89,15 @@ const id_finish_run: usize = 2001;
 const id_finish_desktop: usize = 2002;
 const id_finish: usize = 2003;
 const id_finish_cancel: usize = 2004;
+const id_finish_start_menu: usize = 2005;
+const id_complete_finish: usize = 3001;
 
 const class_static = std.unicode.wtf8ToWtf16LeStringLiteral("STATIC");
 const class_edit = std.unicode.wtf8ToWtf16LeStringLiteral("EDIT");
 const class_button = std.unicode.wtf8ToWtf16LeStringLiteral("BUTTON");
 const window_class = std.unicode.wtf8ToWtf16LeStringLiteral("ZigBundleSetup");
 const finish_class = std.unicode.wtf8ToWtf16LeStringLiteral("ZigBundleFinish");
+const complete_class = std.unicode.wtf8ToWtf16LeStringLiteral("ZigBundleUninstallComplete");
 
 const POINT = extern struct {
     x: c_int,
@@ -220,13 +223,22 @@ const FinishState = struct {
     page_image: ?*anyopaque = null,
     run_check: ?*anyopaque,
     desktop_check: ?*anyopaque,
+    start_menu_check: ?*anyopaque,
     run_app: bool = false,
     desktop_shortcut: bool = false,
+    start_menu_shortcut: bool = false,
 };
 
 pub const FinishResult = struct {
     run_app: bool,
     desktop_shortcut: bool,
+    start_menu_shortcut: bool,
+};
+
+const CompleteState = struct {
+    dpi: c_int,
+    icon: ?*anyopaque,
+    page_image: ?*anyopaque = null,
 };
 
 extern "user32" fn RegisterClassExW(class: *const WNDCLASSEXW) callconv(.winapi) u16;
@@ -581,12 +593,146 @@ fn runPage(
     return state.result;
 }
 
+pub fn uninstallComplete(
+    allocator: std.mem.Allocator,
+    app_name: []const u8,
+    app_icon: ?*anyopaque,
+    app_image: ?*anyopaque,
+) !void {
+    _ = SetProcessDPIAware();
+
+    const instance = GetModuleHandleW(null);
+    const icon = app_icon orelse LoadIconW(null, makeintresource_appicon);
+    _ = RegisterClassExW(&.{
+        .size = @sizeOf(WNDCLASSEXW),
+        .style = 0,
+        .wnd_proc = completeProc,
+        .class_extra = 0,
+        .window_extra = 0,
+        .instance = instance,
+        .icon = icon,
+        .cursor = LoadCursorW(null, makeintresource_arrow),
+        .background = @ptrFromInt(default_face),
+        .menu_name = null,
+        .class_name = complete_class,
+        .small_icon = icon,
+    });
+
+    const dpi: c_int = blk: {
+        const system_dpi = GetDpiForSystem();
+        break :blk if (system_dpi == 0) 96 else @intCast(system_dpi);
+    };
+
+    var state = CompleteState{
+        .dpi = dpi,
+        .icon = app_icon,
+        .page_image = app_image,
+    };
+
+    const title = try std.fmt.allocPrint(allocator, "{s} Uninstall", .{app_name});
+    const title_w = try std.unicode.wtf8ToWtf16LeAllocZ(allocator, title);
+    const screen_width = GetSystemMetrics(sm_cxscreen);
+    const screen_height = GetSystemMetrics(sm_cyscreen);
+    const window_width = scale(480, dpi);
+    const window_height = scale(280, dpi);
+
+    const hwnd = CreateWindowExW(
+        0,
+        complete_class,
+        title_w.ptr,
+        ws_caption | ws_sysmenu | ws_minimizebox,
+        @divTrunc(screen_width - window_width, 2),
+        @divTrunc(screen_height - window_height, 2),
+        window_width,
+        window_height,
+        null,
+        null,
+        instance,
+        null,
+    ) orelse return error.WindowCreateFailed;
+
+    _ = SetWindowLongPtrW(hwnd, gwlp_userdata, @bitCast(@intFromPtr(&state)));
+
+    const normal_font = createFont(dpi, 9, 400);
+    const heading_font = createFont(dpi, 14, 600);
+
+    const heading = std.unicode.wtf8ToWtf16LeStringLiteral("Uninstall Complete");
+    const message = try std.fmt.allocPrint(allocator, "{s} has been uninstalled from your computer.", .{app_name});
+    const message_w = try std.unicode.wtf8ToWtf16LeAllocZ(allocator, message);
+    const click_finish = std.unicode.wtf8ToWtf16LeStringLiteral("Click Finish to close.");
+    const finish = std.unicode.wtf8ToWtf16LeStringLiteral("Finish");
+
+    _ = createControl(hwnd, class_static, heading, ws_child | ws_visible, scale(24, dpi), scale(20, dpi), scale(360, dpi), scale(30, dpi), 0, heading_font);
+    _ = createControl(hwnd, class_static, message_w.ptr, ws_child | ws_visible, scale(24, dpi), scale(62, dpi), scale(360, dpi), scale(40, dpi), 0, normal_font);
+    _ = createControl(hwnd, class_static, click_finish, ws_child | ws_visible, scale(24, dpi), scale(96, dpi), scale(360, dpi), scale(20, dpi), 0, normal_font);
+    _ = createControl(hwnd, class_button, finish, ws_child | ws_visible | ws_tabstop | ws_group | bs_defpushbutton, scale(354, dpi), scale(210, dpi), scale(96, dpi), scale(30, dpi), id_complete_finish, normal_font);
+
+    _ = ShowWindow(hwnd, sw_show);
+    _ = UpdateWindow(hwnd);
+    _ = SetFocus(hwnd);
+
+    var message_loop: MSG = undefined;
+    while (GetMessageW(&message_loop, null, 0, 0) > 0) {
+        _ = TranslateMessage(&message_loop);
+        _ = DispatchMessageW(&message_loop);
+    }
+}
+
+fn getCompleteState(hwnd: ?*anyopaque) ?*CompleteState {
+    const value = GetWindowLongPtrW(hwnd, gwlp_userdata);
+    if (value == 0) return null;
+    return @ptrFromInt(@as(usize, @bitCast(value)));
+}
+
+fn completeProc(hwnd: ?*anyopaque, message: u32, wparam: usize, lparam: isize) callconv(.winapi) isize {
+    const state = getCompleteState(hwnd) orelse return DefWindowProcW(hwnd, message, wparam, lparam);
+
+    switch (message) {
+        wm_command => {
+            const notification: u16 = @truncate(wparam >> 16);
+            const id: u16 = @truncate(wparam);
+            if (notification == bn_clicked and id == id_complete_finish) {
+                _ = DestroyWindow(hwnd);
+            }
+            return 0;
+        },
+        wm_paint => {
+            var paint: PAINTSTRUCT = undefined;
+            const hdc = BeginPaint(hwnd, &paint);
+            if (hdc != null) {
+                var client: RECT = undefined;
+                _ = GetClientRect(hwnd, &client);
+
+                const icon_size = scale(48, state.dpi);
+                const x = client.right - scale(24, state.dpi) - icon_size;
+                if (state.page_image) |image| {
+                    drawImage(hdc, image, x, scale(20, state.dpi), icon_size);
+                } else if (state.icon) |icon| {
+                    _ = DrawIconEx(hdc, x, scale(20, state.dpi), icon, icon_size, icon_size, 0, null, di_normal);
+                }
+                _ = EndPaint(hwnd, &paint);
+            }
+            return 0;
+        },
+        wm_close => {
+            _ = DestroyWindow(hwnd);
+            return 0;
+        },
+        wm_destroy => {
+            PostQuitMessage(0);
+            return 0;
+        },
+        else => return DefWindowProcW(hwnd, message, wparam, lparam),
+    }
+}
+
 pub fn finishPage(
     allocator: std.mem.Allocator,
     app_name: []const u8,
     app_version: []const u8,
     default_run: bool,
     default_desktop: bool,
+    default_start_menu: bool,
     app_icon: ?*anyopaque,
     app_image: ?*anyopaque,
 ) !FinishResult {
@@ -623,6 +769,7 @@ pub fn finishPage(
         .page_image = app_image,
         .run_check = null,
         .desktop_check = null,
+        .start_menu_check = null,
     };
 
     const title = try std.fmt.allocPrint(allocator, "{s} Setup", .{app_name});
@@ -660,6 +807,7 @@ pub fn finishPage(
     const run_label = try std.fmt.allocPrint(allocator, "Run {s}", .{app_name});
     const run_label_w = try std.unicode.wtf8ToWtf16LeAllocZ(allocator, run_label);
     const desktop_label = std.unicode.wtf8ToWtf16LeStringLiteral("Create a desktop shortcut");
+    const start_menu_label = std.unicode.wtf8ToWtf16LeStringLiteral("Create a Start Menu shortcut");
     const finish = std.unicode.wtf8ToWtf16LeStringLiteral("Finish");
     const cancel = std.unicode.wtf8ToWtf16LeStringLiteral("Cancel");
 
@@ -669,9 +817,11 @@ pub fn finishPage(
 
     state.run_check = createControl(hwnd, class_button, run_label_w.ptr, ws_child | ws_visible | ws_tabstop | bs_autocheckbox, scale(180, dpi), scale(146, dpi), scale(320, dpi), scale(24, dpi), id_finish_run, normal_font);
     state.desktop_check = createControl(hwnd, class_button, desktop_label, ws_child | ws_visible | ws_tabstop | bs_autocheckbox, scale(180, dpi), scale(180, dpi), scale(320, dpi), scale(24, dpi), id_finish_desktop, normal_font);
+    state.start_menu_check = createControl(hwnd, class_button, start_menu_label, ws_child | ws_visible | ws_tabstop | bs_autocheckbox, scale(180, dpi), scale(214, dpi), scale(320, dpi), scale(24, dpi), id_finish_start_menu, normal_font);
 
     _ = SendMessageW(state.run_check, bm_setcheck, if (default_run) bst_checked else 0, 0);
     _ = SendMessageW(state.desktop_check, bm_setcheck, if (default_desktop) bst_checked else 0, 0);
+    _ = SendMessageW(state.start_menu_check, bm_setcheck, if (default_start_menu) bst_checked else 0, 0);
     if (!default_run) {
         _ = EnableWindow(state.run_check, 0);
     }
@@ -689,7 +839,11 @@ pub fn finishPage(
         _ = DispatchMessageW(&message);
     }
 
-    return .{ .run_app = state.run_app, .desktop_shortcut = state.desktop_shortcut };
+    return .{
+        .run_app = state.run_app,
+        .desktop_shortcut = state.desktop_shortcut,
+        .start_menu_shortcut = state.start_menu_shortcut,
+    };
 }
 
 fn finishProc(hwnd: ?*anyopaque, message: u32, wparam: usize, lparam: isize) callconv(.winapi) isize {
@@ -704,6 +858,7 @@ fn finishProc(hwnd: ?*anyopaque, message: u32, wparam: usize, lparam: isize) cal
                     id_finish => {
                         state.run_app = SendMessageW(state.run_check, bm_getcheck, 0, 0) == 1;
                         state.desktop_shortcut = SendMessageW(state.desktop_check, bm_getcheck, 0, 0) == 1;
+                        state.start_menu_shortcut = SendMessageW(state.start_menu_check, bm_getcheck, 0, 0) == 1;
                         _ = DestroyWindow(hwnd);
                     },
                     id_finish_cancel => _ = DestroyWindow(hwnd),

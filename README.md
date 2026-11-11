@@ -98,7 +98,7 @@ zig build bundle -Dformat=deb -Dtarget=x86_64-linux-gnu
 zig build bundle -Dformat=setup_exe -Dtarget=x86_64-windows-gnu
 ```
 
-`bundle.Formats` can enable several formats at once by setting multiple fields:
+`formats` defaults to ZIP when omitted, and `bundle.Formats` can enable several formats at once by setting multiple fields:
 
 ```zig
 .formats = .{
@@ -111,8 +111,9 @@ The installer is a GUI-subsystem executable with a native install-location windo
 (destination edit, Browse, disk space) and TaskDialog prompts. It supports
 `--silent`, `--dir <path>`, and `--uninstall`. It installs to
 `%LOCALAPPDATA%\Programs\<name>` (current user) or `%ProgramFiles%\<name>`
-(all users, requires elevation), creates shortcuts, registers an uninstall entry,
-and copies `uninstall.exe` into the install directory.
+(all users, requires elevation), registers an uninstall entry, and copies
+`uninstall.exe` into the install directory. The finish page lets the user choose
+Start Menu and desktop shortcuts and whether to launch the application.
 
 A complete example lives in [`examples/`](examples).
 

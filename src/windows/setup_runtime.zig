@@ -189,13 +189,12 @@ pub fn main(init: std.process.Init) !void {
 
     if (uninstall) {
         const install_dir = std.fs.path.dirname(executable_path) orelse return error.InvalidUninstaller;
+        const icons = if (!silent and manifest.icon.len > 0)
+            loadSetupIcons(init, arena, executable_path, manifest)
+        else
+            SetupIcons{};
 
         if (!silent) {
-            const icons = if (manifest.icon.len > 0)
-                loadSetupIcons(init, arena, executable_path, manifest)
-            else
-                SetupIcons{};
-
             if (!try gui.uninstallPage(
                 arena,
                 manifest.name,
@@ -211,7 +210,7 @@ pub fn main(init: std.process.Init) !void {
             return err;
         };
 
-        if (!silent) gui.showInfo(arena, "Uninstalled", "Uninstallation complete.");
+        if (!silent) gui.uninstallComplete(arena, manifest.name, icons.window, icons.page) catch {};
         return;
     }
 
@@ -235,12 +234,21 @@ pub fn main(init: std.process.Init) !void {
             manifest.version,
             manifest.launch,
             manifest.desktop,
+            manifest.start_menu,
             icons.window,
             icons.page,
         ) catch |err| {
             gui.showError(arena, "Setup failed", @errorName(err));
             return err;
         };
+
+        if (finish.start_menu_shortcut) {
+            createStartMenuShortcut(init, arena, manifest, installed.install_path, installed.target_exe, installed.icon_path) catch |err| {
+                gui.showError(arena, "Shortcut failed", @errorName(err));
+            };
+        } else {
+            removeStartMenuShortcut(init, arena, manifest) catch {};
+        }
 
         if (finish.desktop_shortcut) {
             createDesktopShortcut(init, arena, manifest, installed.install_path, installed.target_exe, installed.icon_path) catch |err| {
@@ -553,14 +561,37 @@ fn createShortcuts(
     include_desktop: bool,
 ) !void {
     if (manifest.start_menu) {
-        const link_path = try shortcutPath(init, allocator, manifest, .start_menu);
-        try ensureParent(init.io, link_path);
-        try createShortcut(allocator, link_path, target_exe, icon_path, install_dir, manifest.name);
+        try createStartMenuShortcut(init, allocator, manifest, install_dir, target_exe, icon_path);
     }
 
     if (include_desktop and manifest.desktop) {
         try createDesktopShortcut(init, allocator, manifest, install_dir, target_exe, icon_path);
     }
+}
+
+fn createStartMenuShortcut(
+    init: std.process.Init,
+    allocator: std.mem.Allocator,
+    manifest: Manifest,
+    install_dir: []const u8,
+    target_exe: []const u8,
+    icon_path: []const u8,
+) !void {
+    const link_path = try shortcutPath(init, allocator, manifest, .start_menu);
+    try ensureParent(init.io, link_path);
+    try createShortcut(allocator, link_path, target_exe, icon_path, install_dir, manifest.name);
+}
+
+fn removeStartMenuShortcut(
+    init: std.process.Init,
+    allocator: std.mem.Allocator,
+    manifest: Manifest,
+) !void {
+    const link_path = try shortcutPath(init, allocator, manifest, .start_menu);
+    Io.Dir.cwd().deleteFile(init.io, link_path) catch |err| switch (err) {
+        error.FileNotFound => {},
+        else => return err,
+    };
 }
 
 fn createDesktopShortcut(
@@ -622,21 +653,8 @@ fn removeShortcuts(
     allocator: std.mem.Allocator,
     manifest: Manifest,
 ) !void {
-    if (manifest.start_menu) {
-        const link_path = try shortcutPath(init, allocator, manifest, .start_menu);
-        Io.Dir.cwd().deleteFile(init.io, link_path) catch |err| switch (err) {
-            error.FileNotFound => {},
-            else => return err,
-        };
-    }
-
-    if (manifest.desktop) {
-        const link_path = try shortcutPath(init, allocator, manifest, .desktop);
-        Io.Dir.cwd().deleteFile(init.io, link_path) catch |err| switch (err) {
-            error.FileNotFound => {},
-            else => return err,
-        };
-    }
+    try removeStartMenuShortcut(init, allocator, manifest);
+    try removeDesktopShortcut(init, allocator, manifest);
 }
 
 fn createShortcut(

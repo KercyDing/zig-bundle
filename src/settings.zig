@@ -6,7 +6,8 @@ const capabilities = @import("capabilities.zig");
 pub const Options = struct {
     app: App,
     input: Input,
-    formats: Formats,
+    /// Defaults to a ZIP archive when omitted.
+    formats: Formats = .{ .zip = .{} },
 };
 
 /// Application metadata shared by every output format.
@@ -77,9 +78,8 @@ pub const TarGzOptions = struct {
 pub const DebOptions = struct {
     /// Debian package dependencies, e.g. `"libc6 (>= 2.31)"`.
     depends: []const []const u8 = &.{},
-    section: ?[]const u8 = null,
-    /// Defaults to `"optional"`.
-    priority: ?[]const u8 = null,
+    section: ?[]const u8 = "utils",
+    priority: ?[]const u8 = "optional",
 };
 
 pub const SetupExeOptions = struct {
@@ -216,4 +216,23 @@ fn validateFormat(format: capabilities.Format, host: std.Target, target: std.Tar
             .{ @tagName(format), @tagName(host.cpu.arch), @tagName(target.cpu.arch) },
         ),
     };
+}
+
+test "options default to a ZIP bundle" {
+    const options: Options = .{
+        .app = .{ .name = "Default", .identifier = "com.example.default", .version = "1.0.0" },
+        .input = .{ .executable = undefined },
+    };
+
+    try std.testing.expect(options.formats.zip != null);
+    try std.testing.expect(options.formats.tar_gz == null);
+    try std.testing.expect(options.formats.deb == null);
+    try std.testing.expect(options.formats.setup_exe == null);
+}
+
+test "deb options have metadata defaults" {
+    const options: DebOptions = .{};
+
+    try std.testing.expectEqualStrings("utils", options.section.?);
+    try std.testing.expectEqualStrings("optional", options.priority.?);
 }
