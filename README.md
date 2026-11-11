@@ -97,7 +97,9 @@ Windows installer options:
 },
 ```
 
-The runtime supports `--silent`, `--dir <path>`, and `--uninstall`. It installs to
+The installer is a GUI-subsystem executable with a native install-location window
+(destination edit, Browse, disk space) and TaskDialog prompts. It supports
+`--silent`, `--dir <path>`, and `--uninstall`. It installs to
 `%LOCALAPPDATA%\Programs\<name>` (current user) or `%ProgramFiles%\<name>`
 (all users, requires elevation), creates shortcuts, registers an uninstall entry,
 and copies `uninstall.exe` into the install directory.
@@ -122,6 +124,7 @@ With [Only](https://github.com/KercyDing/only):
 only test
 only fmt
 only clean
+only example run
 only example zip
 only example tar_gz
 only example deb

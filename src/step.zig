@@ -42,6 +42,8 @@ pub fn add(b: *std.Build, options: Options) *BundleStep {
         const target = options.input.executable.root_module.resolved_target orelse b.graph.host;
         const write_files = b.addWriteFiles();
         const runtime_source = write_files.add("setup_runtime.zig", @embedFile("windows/setup_runtime.zig"));
+        _ = write_files.add("gui.zig", @embedFile("windows/gui.zig"));
+        const runtime_manifest = write_files.add("setup.manifest", @embedFile("windows/setup.manifest"));
         const runtime = b.addExecutable(.{
             .name = "zig-bundle-setup",
             .root_module = b.createModule(.{
@@ -50,7 +52,11 @@ pub fn add(b: *std.Build, options: Options) *BundleStep {
                 .optimize = .ReleaseSmall,
                 .strip = true,
             }),
+            .win32_manifest = runtime_manifest,
         });
+        runtime.subsystem = .windows;
+        runtime.root_module.linkSystemLibrary("comctl32", .{});
+        runtime.root_module.linkSystemLibrary("gdi32", .{});
         self.step.dependOn(&runtime.step);
         self.settings.setup_runtime = runtime.getEmittedBin();
     }

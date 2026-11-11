@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const gui = @import("gui.zig");
+
 const flate = std.compress.flate;
 const Io = std.Io;
 const windows = std.os.windows;
@@ -180,12 +182,55 @@ pub fn main(init: std.process.Init) !void {
     const manifest = try readManifest(arena, io, executable_path);
 
     if (uninstall) {
-        try uninstallApp(init, arena, executable_path, manifest, silent);
+        if (!silent) {
+            const content = try std.fmt.allocPrint(arena, "This will remove {s} {s} and its shortcuts.", .{
+                manifest.name,
+                manifest.version,
+            });
+            if (!gui.confirmDialog(arena, "Uninstall", "Uninstall this application?", content)) return;
+        }
+
+        uninstallApp(init, arena, executable_path, manifest) catch |err| {
+            if (!silent) gui.showError(arena, "Uninstall failed", @errorName(err));
+            return err;
+        };
+
+        if (!silent) gui.showInfo(arena, "Uninstalled", "Uninstallation complete.");
         return;
     }
 
     const install_dir = try chooseInstallDir(init, arena, manifest, target_dir, silent);
-    try installApp(init, arena, executable_path, manifest, install_dir, silent);
+    if (install_dir == null) return;
+
+    const installed = installApp(init, arena, executable_path, manifest, install_dir.?, !silent) catch |err| {
+        if (!silent) gui.showError(arena, "Installation failed", @errorName(err));
+        return err;
+    };
+
+    if (!silent) {
+        const finish = gui.finishPage(
+            arena,
+            manifest.name,
+            manifest.version,
+            manifest.launch,
+            manifest.desktop,
+        ) catch |err| {
+            gui.showError(arena, "Setup failed", @errorName(err));
+            return err;
+        };
+
+        if (finish.desktop_shortcut) {
+            createDesktopShortcut(init, arena, manifest, installed.install_path, installed.target_exe) catch |err| {
+                gui.showError(arena, "Shortcut failed", @errorName(err));
+            };
+        } else {
+            removeDesktopShortcut(init, arena, manifest) catch {};
+        }
+
+        if (finish.run_app) {
+            launchApp(arena, installed.target_exe, installed.install_path);
+        }
+    }
 }
 
 fn readManifest(allocator: std.mem.Allocator, io: Io, executable_path: []const u8) !Manifest {
@@ -238,34 +283,34 @@ fn chooseInstallDir(
     manifest: Manifest,
     target_dir: ?[]const u8,
     silent: bool,
-) ![]const u8 {
-    if (target_dir) |dir| return allocator.dupe(u8, dir);
-
-    const base = switch (manifest.scope) {
-        .current_user => blk: {
-            const local = init.environ_map.get("LOCALAPPDATA") orelse return error.MissingLocalAppData;
-            break :blk try std.fs.path.join(allocator, &.{ local, "Programs" });
-        },
-        .all_users => init.environ_map.get("ProgramFiles") orelse return error.MissingProgramFiles,
+) !?[]const u8 {
+    const default_dir = if (target_dir) |dir| blk: {
+        break :blk try allocator.dupe(u8, dir);
+    } else blk: {
+        const base = switch (manifest.scope) {
+            .current_user => blk2: {
+                const local = init.environ_map.get("LOCALAPPDATA") orelse return error.MissingLocalAppData;
+                break :blk2 try std.fs.path.join(allocator, &.{ local, "Programs" });
+            },
+            .all_users => init.environ_map.get("ProgramFiles") orelse return error.MissingProgramFiles,
+        };
+        break :blk try std.fs.path.join(allocator, &.{ base, manifest.name });
     };
-    const default_dir = try std.fs.path.join(allocator, &.{ base, manifest.name });
+
     if (silent) return default_dir;
-
-    var stdout_buffer: [1024]u8 = undefined;
-    var stdout = Io.File.stdout().writerStreaming(init.io, &stdout_buffer);
-    try stdout.interface.print("Install directory [{s}]: ", .{default_dir});
-    try stdout.interface.flush();
-
-    var stdin_buffer: [1024]u8 = undefined;
-    var stdin = Io.File.stdin().reader(init.io, &stdin_buffer);
-    const line = stdin.interface.takeDelimiterExclusive('\n') catch |err| switch (err) {
-        error.EndOfStream => return default_dir,
-        else => return err,
-    };
-    const trimmed = std.mem.trim(u8, line, " \t\r");
-    if (trimmed.len == 0) return default_dir;
-    return allocator.dupe(u8, trimmed);
+    return gui.chooseInstallLocation(
+        allocator,
+        manifest.name,
+        manifest.version,
+        default_dir,
+        manifest.payload_size,
+    );
 }
+
+const Installed = struct {
+    install_path: []const u8,
+    target_exe: []const u8,
+};
 
 fn installApp(
     init: std.process.Init,
@@ -273,8 +318,8 @@ fn installApp(
     executable_path: []const u8,
     manifest: Manifest,
     install_dir: []const u8,
-    silent: bool,
-) !void {
+    defer_desktop: bool,
+) !Installed {
     const io = init.io;
 
     var output_dir = try Io.Dir.cwd().createDirPathOpen(io, install_dir, .{});
@@ -290,18 +335,12 @@ fn installApp(
     try copyFile(io, executable_path, uninstall_path);
 
     if (manifest.start_menu or manifest.desktop) {
-        try createShortcuts(init, allocator, manifest, install_path, target_exe);
+        try createShortcuts(init, allocator, manifest, install_path, target_exe, !defer_desktop);
     }
 
     try writeUninstallRegistry(allocator, manifest, install_path, target_exe, uninstall_path);
 
-    if (manifest.launch and !silent) {
-        launchApp(allocator, target_exe, install_path);
-    }
-
-    if (!silent) {
-        try print(init.io, "Installed {s} {s} to {s}\n", .{ manifest.name, manifest.version, install_dir });
-    }
+    return .{ .install_path = install_path, .target_exe = target_exe };
 }
 
 fn uninstallApp(
@@ -309,7 +348,6 @@ fn uninstallApp(
     allocator: std.mem.Allocator,
     executable_path: []const u8,
     manifest: Manifest,
-    silent: bool,
 ) !void {
     const io = init.io;
     const install_dir = std.fs.path.dirname(executable_path) orelse return error.InvalidUninstaller;
@@ -329,10 +367,6 @@ fn uninstallApp(
     } else {
         try removeContents(allocator, io, install_dir, executable_path);
         scheduleDelete(allocator, executable_path);
-    }
-
-    if (!silent) {
-        try print(io, "Uninstalled {s} {s}\n", .{ manifest.name, manifest.version });
     }
 }
 
@@ -409,6 +443,7 @@ fn createShortcuts(
     manifest: Manifest,
     install_dir: []const u8,
     target_exe: []const u8,
+    include_desktop: bool,
 ) !void {
     if (manifest.start_menu) {
         const link_path = try shortcutPath(init, allocator, manifest, .start_menu);
@@ -416,11 +451,33 @@ fn createShortcuts(
         try createShortcut(allocator, link_path, target_exe, install_dir, manifest.name);
     }
 
-    if (manifest.desktop) {
-        const link_path = try shortcutPath(init, allocator, manifest, .desktop);
-        try ensureParent(init.io, link_path);
-        try createShortcut(allocator, link_path, target_exe, install_dir, manifest.name);
+    if (include_desktop and manifest.desktop) {
+        try createDesktopShortcut(init, allocator, manifest, install_dir, target_exe);
     }
+}
+
+fn createDesktopShortcut(
+    init: std.process.Init,
+    allocator: std.mem.Allocator,
+    manifest: Manifest,
+    install_dir: []const u8,
+    target_exe: []const u8,
+) !void {
+    const link_path = try shortcutPath(init, allocator, manifest, .desktop);
+    try ensureParent(init.io, link_path);
+    try createShortcut(allocator, link_path, target_exe, install_dir, manifest.name);
+}
+
+fn removeDesktopShortcut(
+    init: std.process.Init,
+    allocator: std.mem.Allocator,
+    manifest: Manifest,
+) !void {
+    const link_path = try shortcutPath(init, allocator, manifest, .desktop);
+    Io.Dir.cwd().deleteFile(init.io, link_path) catch |err| switch (err) {
+        error.FileNotFound => {},
+        else => return err,
+    };
 }
 
 fn shortcutPath(
@@ -657,13 +714,6 @@ fn ensureParent(io: Io, path: []const u8) !void {
     if (std.fs.path.dirname(path)) |parent| {
         try Io.Dir.cwd().createDirPath(io, parent);
     }
-}
-
-fn print(io: Io, comptime format: []const u8, arguments: anytype) !void {
-    var buffer: [1024]u8 = undefined;
-    var stdout = Io.File.stdout().writerStreaming(io, &buffer);
-    try stdout.interface.print(format, arguments);
-    try stdout.interface.flush();
 }
 
 fn manifestValue(manifest: []const u8, key: []const u8) ?[]const u8 {
