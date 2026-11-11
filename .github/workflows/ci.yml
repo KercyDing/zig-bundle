@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: check (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-linux-gnu
+            format: deb
+          - os: ubuntu-latest
+            target: aarch64-linux-gnu
+            format: deb
+          - os: macos-latest
+            target: x86_64-macos
+            format: zip
+          - os: macos-latest
+            target: aarch64-macos
+            format: zip
+          - os: windows-latest
+            target: x86_64-windows-gnu
+            format: setup_exe
+          - os: windows-latest
+            target: aarch64-windows-gnu
+            format: setup_exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Format check
+        run: zig fmt --check src build.zig examples/build.zig examples/src
+
+      - name: Test
+        run: zig build test
+
+      - name: Native build
+        working-directory: examples
+        run: zig build bundle -Dformat=${{ matrix.format }} -Dtarget=${{ matrix.target }}
+
+  cross:
+    name: cross (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Cross-build
+        working-directory: examples
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "${{ matrix.os }}" in
+            ubuntu-*)
+              zig build bundle -Dformat=setup_exe -Dtarget=x86_64-windows-gnu
+              zig build bundle -Dformat=setup_exe -Dtarget=aarch64-windows-gnu
+              zig build bundle -Dformat=zip -Dtarget=x86_64-macos
+              zig build bundle -Dformat=zip -Dtarget=aarch64-macos
+              ;;
+            macos-*)
+              zig build bundle -Dformat=deb -Dtarget=x86_64-linux-gnu
+              zig build bundle -Dformat=deb -Dtarget=aarch64-linux-gnu
+              zig build bundle -Dformat=setup_exe -Dtarget=x86_64-windows-gnu
+              zig build bundle -Dformat=setup_exe -Dtarget=aarch64-windows-gnu
+              ;;
+            windows-*)
+              zig build bundle -Dformat=deb -Dtarget=x86_64-linux-gnu
+              zig build bundle -Dformat=deb -Dtarget=aarch64-linux-gnu
+              zig build bundle -Dformat=zip -Dtarget=x86_64-macos
+              zig build bundle -Dformat=zip -Dtarget=aarch64-macos
+              ;;
+          esac
