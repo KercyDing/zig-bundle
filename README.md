@@ -42,6 +42,7 @@ const bundle = @import("bundle");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const format = b.option(bundle.Format, "format", "Bundle format") orelse .zip;
 
     const exe = b.addExecutable(.{
         .name = "MyApp",
@@ -51,6 +52,17 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+
+    const formats: bundle.Formats = switch (format) {
+        .zip => .{ .zip = .{} },
+        .tar_gz => .{ .tar_gz = .{} },
+        .deb => .{ .deb = .{} },
+        .setup_exe => .{ .setup_exe = .{
+            .install_scope = .current_user,
+            .shortcuts = .{ .start_menu = true, .desktop = true },
+            .launch_app = true,
+        } },
+    };
 
     const bundled = bundle.add(b, .{
         .app = .{
@@ -71,32 +83,27 @@ pub fn build(b: *std.Build) void {
                 .{ .source = b.path("README.md"), .dest = "docs/README.md" },
             },
         },
-        .formats = .{
-            .zip = .{},
-            .tar_gz = .{},
-        },
+        .formats = formats,
     });
 
     b.step("bundle", "Bundle application").dependOn(&bundled.step);
 }
 ```
 
-For Linux targets, enable the Debian package:
+Select the format with `-Dformat`; the default is `zip`:
+
+```bash
+zig build bundle
+zig build bundle -Dformat=deb -Dtarget=x86_64-linux-gnu
+zig build bundle -Dformat=setup_exe -Dtarget=x86_64-windows-gnu
+```
+
+`bundle.Formats` can enable several formats at once by setting multiple fields:
 
 ```zig
 .formats = .{
+    .zip = .{},
     .tar_gz = .{},
-    .deb = .{},
-},
-```
-
-Windows installer options:
-
-```zig
-.setup_exe = .{
-    .install_scope = .current_user,
-    .shortcuts = .{ .start_menu = true, .desktop = true },
-    .launch_app = true,
 },
 ```
 
@@ -106,12 +113,6 @@ The installer is a GUI-subsystem executable with a native install-location windo
 `%LOCALAPPDATA%\Programs\<name>` (current user) or `%ProgramFiles%\<name>`
 (all users, requires elevation), creates shortcuts, registers an uninstall entry,
 and copies `uninstall.exe` into the install directory.
-
-Run:
-
-```bash
-zig build bundle
-```
 
 A complete example lives in [`examples/`](examples).
 

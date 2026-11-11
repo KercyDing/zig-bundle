@@ -2,12 +2,10 @@ const std = @import("std");
 
 const bundle = @import("bundle");
 
-const Format = enum { zip, tar_gz, deb, setup_exe };
-
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const format = b.option(Format, "format", "Bundle format") orelse .zip;
+    const format = b.option(bundle.Format, "format", "Bundle format") orelse .zip;
 
     const exe = b.addExecutable(.{
         .name = "hello-bundle",

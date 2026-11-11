@@ -11,6 +11,7 @@ pub const App = root.App;
 pub const BundleStep = root.BundleStep;
 pub const Compression = root.Compression;
 pub const DebOptions = root.DebOptions;
+pub const Format = root.Format;
 pub const Formats = root.Formats;
 pub const Input = root.Input;
 pub const Options = root.Options;

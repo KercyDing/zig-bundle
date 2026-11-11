@@ -58,6 +58,9 @@ pub const Formats = struct {
     setup_exe: ?SetupExeOptions = null,
 };
 
+/// Supported bundle formats, for command-line selection.
+pub const Format = std.meta.FieldEnum(Formats);
+
 pub const Compression = enum { store, deflate };
 
 pub const ZipOptions = struct {

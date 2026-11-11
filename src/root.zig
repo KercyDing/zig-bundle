@@ -22,6 +22,7 @@ const zip = @import("bundle/common/zip.zig");
 pub const App = settings.App;
 pub const Compression = settings.Compression;
 pub const DebOptions = settings.DebOptions;
+pub const Format = settings.Format;
 pub const Formats = settings.Formats;
 pub const Input = settings.Input;
 pub const Options = settings.Options;
