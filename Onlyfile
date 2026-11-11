@@ -22,6 +22,10 @@ clean():
 [help] Example application
 group example {
 
+    [help] Run the example application
+    run():
+        cd examples && zig build run
+
     [help] Package the example application as a ZIP
     [fail] Example ZIP package failed.
     zip():
