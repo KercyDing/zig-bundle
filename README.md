@@ -112,8 +112,9 @@ The installer is a GUI-subsystem executable with a native install-location windo
 `--silent`, `--dir <path>`, and `--uninstall`. It installs to
 `%LOCALAPPDATA%\Programs\<name>` (current user) or `%ProgramFiles%\<name>`
 (all users, requires elevation), registers an uninstall entry, and copies
-`uninstall.exe` into the install directory. The finish page lets the user choose
-Start Menu and desktop shortcuts and whether to launch the application.
+`uninstall.exe` into the install directory. If the selected folder is not empty,
+Setup asks before overwriting existing files. The finish page lets the user
+choose Start Menu and desktop shortcuts and whether to launch the application.
 
 A complete example lives in [`examples/`](examples).
 

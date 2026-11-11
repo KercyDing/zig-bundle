@@ -76,7 +76,9 @@ const makeintresource_appicon: ?*const anyopaque = @ptrFromInt(32512);
 const image_icon: u32 = 1;
 const lr_loadfromfile: u32 = 0x10;
 const mb_ok: u32 = 0x0;
+const mb_yesno: u32 = 0x4;
 const mb_iconwarning: u32 = 0x30;
+const idyes: c_int = 6;
 
 const id_edit: usize = 1001;
 const id_browse: usize = 1002;
@@ -426,6 +428,18 @@ pub fn chooseInstallLocation(
     app_image: ?*anyopaque,
 ) !?[]const u8 {
     return runPage(.install, allocator, app_name, app_version, default_dir, required_bytes, app_icon, app_image);
+}
+
+pub fn confirmOverwrite(allocator: std.mem.Allocator, install_dir: []const u8) bool {
+    const content = std.fmt.allocPrint(
+        allocator,
+        "The folder is not empty:\n\n{s}\n\nExisting files may be overwritten. Install anyway?",
+        .{install_dir},
+    ) catch return false;
+    const content_w = std.unicode.wtf8ToWtf16LeAllocZ(allocator, content) catch return false;
+    const caption = std.unicode.wtf8ToWtf16LeStringLiteral("Folder not empty");
+
+    return MessageBoxW(null, content_w.ptr, caption, mb_yesno | mb_iconwarning) == idyes;
 }
 
 pub fn uninstallPage(

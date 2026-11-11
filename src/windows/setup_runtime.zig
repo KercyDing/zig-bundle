@@ -219,7 +219,13 @@ pub fn main(init: std.process.Init) !void {
     else
         SetupIcons{};
 
-    const install_dir = try chooseInstallDir(init, arena, manifest, target_dir, silent, icons);
+    var install_dir = try chooseInstallDir(init, arena, manifest, target_dir, silent, icons);
+    while (install_dir) |dir| {
+        if (silent or try isDirectoryEmpty(io, dir)) break;
+        if (gui.confirmOverwrite(arena, dir)) break;
+
+        install_dir = try chooseInstallDir(init, arena, manifest, target_dir, silent, icons);
+    }
     if (install_dir == null) return;
 
     const installed = installApp(init, arena, executable_path, manifest, install_dir.?, !silent) catch |err| {
@@ -836,6 +842,20 @@ fn launchApp(allocator: std.mem.Allocator, target_exe: []const u8, working_dir: 
     const directory_w = std.unicode.wtf8ToWtf16LeAllocZ(allocator, working_dir) catch return;
     const result = ShellExecuteW(null, null, file_w.ptr, null, directory_w.ptr, sw_shownormal);
     _ = result;
+}
+
+fn isDirectoryEmpty(io: Io, path: []const u8) !bool {
+    const stat = Io.Dir.cwd().statFile(io, path, .{}) catch |err| switch (err) {
+        error.FileNotFound => return true,
+        else => return err,
+    };
+    if (stat.kind != .directory) return false;
+
+    var dir = try Io.Dir.openDirAbsolute(io, path, .{ .iterate = true });
+    defer dir.close(io);
+
+    var iterator = dir.iterate();
+    return (try iterator.next(io)) == null;
 }
 
 fn ensureParent(io: Io, path: []const u8) !void {
