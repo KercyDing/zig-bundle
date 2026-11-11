@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const Format = enum { zip, tar_gz, deb };
+pub const Format = enum { zip, tar_gz, deb, setup_exe };
 
 /// Host platform a format can be produced on.
 pub const Host = enum { any, macos, linux };
@@ -16,6 +16,7 @@ pub fn spec(format: Format) Spec {
     return switch (format) {
         .zip, .tar_gz => .{},
         .deb => .{ .target_os = .linux },
+        .setup_exe => .{ .target_os = .windows },
     };
 }
 
@@ -64,6 +65,14 @@ fn checkSpec(
 test "deb requires linux target" {
     try check(.deb, .windows, .x86_64, .linux, .x86_64);
     try std.testing.expectError(error.UnsupportedTarget, check(.deb, .windows, .x86_64, .windows, .x86_64));
+}
+
+test "setup.exe requires windows target" {
+    try check(.setup_exe, .linux, .x86_64, .windows, .x86_64);
+    try std.testing.expectError(
+        error.UnsupportedTarget,
+        check(.setup_exe, .windows, .x86_64, .linux, .x86_64),
+    );
 }
 
 test "archives are universal" {

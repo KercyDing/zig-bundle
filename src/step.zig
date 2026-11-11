@@ -38,6 +38,23 @@ pub fn add(b: *std.Build, options: Options) *BundleStep {
         icon.addStepDependencies(&self.step);
     }
 
+    if (self.settings.setup_exe != null) {
+        const target = options.input.executable.root_module.resolved_target orelse b.graph.host;
+        const write_files = b.addWriteFiles();
+        const runtime_source = write_files.add("setup_runtime.zig", @embedFile("windows/setup_runtime.zig"));
+        const runtime = b.addExecutable(.{
+            .name = "zig-bundle-setup",
+            .root_module = b.createModule(.{
+                .root_source_file = runtime_source,
+                .target = target,
+                .optimize = .ReleaseSmall,
+                .strip = true,
+            }),
+        });
+        self.step.dependOn(&runtime.step);
+        self.settings.setup_runtime = runtime.getEmittedBin();
+    }
+
     return self;
 }
 

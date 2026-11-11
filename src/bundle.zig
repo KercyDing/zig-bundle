@@ -3,6 +3,7 @@ const std = @import("std");
 const deb = @import("bundle/linux/deb.zig");
 const resources = @import("bundle/common/resources.zig");
 const settings = @import("settings.zig");
+const setup_exe = @import("bundle/windows/setup_exe.zig");
 const tar_gz = @import("bundle/common/tar_gz.zig");
 const zip = @import("bundle/common/zip.zig");
 
@@ -135,6 +136,41 @@ pub fn project(
                 .priority = options.priority,
             },
         }, deb_arch.?, dir, package_basename, arena) catch |err| {
+            return step.fail("failed to create '{s}': {t}", .{ path, err });
+        };
+
+        try artifacts.append(b.allocator, b.dupe(path));
+    }
+
+    if (config.setup_exe) |options| {
+        const runtime = config.setup_runtime orelse return step.fail("setup runtime was not built", .{});
+        const runtime_path = try resolveLazyPath(b, step, runtime, arena);
+
+        const dir = try std.fs.path.join(arena, &.{ output_root, "setup" });
+        try Io.Dir.cwd().createDirPath(io, dir);
+
+        const file_name = try std.fmt.allocPrint(arena, "{s}_{s}_{s}-setup.exe", .{
+            config.name,
+            config.version,
+            @tagName(target.result.cpu.arch),
+        });
+        const path = try std.fs.path.join(arena, &.{ dir, file_name });
+
+        var file = try createOutputFile(io, path);
+        defer file.close(io);
+
+        setup_exe.bundle(io, file, .{
+            .name = config.name,
+            .identifier = config.identifier,
+            .version = config.version,
+            .scope = switch (options.install_scope) {
+                .current_user => .current_user,
+                .all_users => .all_users,
+            },
+            .executable_name = config.executable.out_filename,
+            .payload = payload.entries.items,
+            .runtime_path = runtime_path,
+        }, arena) catch |err| {
             return step.fail("failed to create '{s}': {t}", .{ path, err });
         };
 

@@ -46,6 +46,7 @@ pub const Formats = struct {
     zip: ?ZipOptions = null,
     tar_gz: ?TarGzOptions = null,
     deb: ?DebOptions = null,
+    setup_exe: ?SetupExeOptions = null,
 };
 
 pub const Compression = enum { store, deflate };
@@ -69,6 +70,12 @@ pub const DebOptions = struct {
     priority: ?[]const u8 = null,
 };
 
+pub const SetupExeOptions = struct {
+    install_scope: InstallScope = .current_user,
+
+    pub const InstallScope = enum { current_user, all_users };
+};
+
 /// Validated, normalized settings owned by a `BundleStep`.
 pub const Settings = struct {
     name: []const u8,
@@ -85,6 +92,9 @@ pub const Settings = struct {
     zip: ?ZipOptions,
     tar_gz: ?TarGzOptions,
     deb: ?DebOptions,
+    setup_exe: ?SetupExeOptions,
+    /// Built by `step.add` when `setup_exe` is enabled.
+    setup_runtime: ?std.Build.LazyPath = null,
 
     pub fn init(b: *std.Build, options: Options) Settings {
         const app = options.app;
@@ -93,18 +103,27 @@ pub const Settings = struct {
             std.process.fatal("zig-bundle: app name must not be empty", .{});
         }
         for (app.name) |c| {
-            if (c == 0 or c == '/' or c == '\\') {
-                std.process.fatal("zig-bundle: app name '{s}' must not contain path separators", .{app.name});
+            if (c == 0 or c == '/' or c == '\\' or c == '\n' or c == '\r') {
+                std.process.fatal("zig-bundle: app name '{s}' contains an invalid character", .{app.name});
             }
         }
         if (app.identifier.len == 0) {
             std.process.fatal("zig-bundle: app identifier must not be empty", .{});
         }
+        for (app.identifier) |c| {
+            if (c == 0 or c == '\n' or c == '\r') {
+                std.process.fatal("zig-bundle: app identifier '{s}' contains an invalid character", .{app.identifier});
+            }
+        }
         _ = std.SemanticVersion.parse(app.version) catch {
             std.process.fatal("zig-bundle: invalid app version '{s}'", .{app.version});
         };
 
-        if (options.formats.zip == null and options.formats.tar_gz == null and options.formats.deb == null) {
+        if (options.formats.zip == null and
+            options.formats.tar_gz == null and
+            options.formats.deb == null and
+            options.formats.setup_exe == null)
+        {
             std.process.fatal("zig-bundle: at least one output format must be enabled", .{});
         }
 
@@ -113,6 +132,7 @@ pub const Settings = struct {
         if (options.formats.zip != null) validateFormat(.zip, host, target);
         if (options.formats.tar_gz != null) validateFormat(.tar_gz, host, target);
         if (options.formats.deb != null) validateFormat(.deb, host, target);
+        if (options.formats.setup_exe != null) validateFormat(.setup_exe, host, target);
 
         const resources = b.allocator.alloc(Resource, options.input.resources.len) catch @panic("OOM");
         for (options.input.resources, resources) |resource, *dest| {
@@ -147,6 +167,7 @@ pub const Settings = struct {
             .zip = options.formats.zip,
             .tar_gz = options.formats.tar_gz,
             .deb = deb,
+            .setup_exe = options.formats.setup_exe,
         };
     }
 };

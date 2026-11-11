@@ -15,6 +15,7 @@ pub const Formats = root.Formats;
 pub const Input = root.Input;
 pub const Options = root.Options;
 pub const Resource = root.Resource;
+pub const SetupExeOptions = root.SetupExeOptions;
 pub const TarGzOptions = root.TarGzOptions;
 pub const ZipOptions = root.ZipOptions;
 
