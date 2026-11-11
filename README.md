@@ -14,15 +14,16 @@ reimplemented in Zig and designed around `std.Build`.
 | Format | Output |
 | --- | --- |
 | `zip` | `<prefix>/bundle/zip/<name>-<version>-<arch>-<os>.zip` |
-| `tar_gz` | `<prefix>/bundle/tar.gz/<name>-<version>-<arch>-<os>.tar.gz` |
+| `tar_gz` | `<prefix>/bundle/tar_gz/<name>-<version>-<arch>-<os>.tar.gz` |
 | `deb` | `<prefix>/bundle/deb/<name>_<version>_<deb-arch>.deb` |
-| `setup_exe` | `<prefix>/bundle/setup/<name>_<version>_<arch>-setup.exe` |
+| `setup_exe` | `<prefix>/bundle/setup_exe/<name>_<version>_<arch>-setup.exe` |
 
 Archives contain the executable and configured resources at the archive root.
 Timestamps are fixed so repeated builds produce identical archives.
 `deb` requires a Linux target and is generated natively without external tools.
 `setup_exe` requires a Windows target and embeds a Zig-native installer runtime.
 Format/host/target compatibility is validated while configuring the bundle, before any build steps run.
+`<prefix>` is the Zig install prefix, which defaults to `zig-out` (override with `zig build --prefix <path>`).
 
 ## Usage
 

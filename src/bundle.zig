@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const capabilities = @import("capabilities.zig");
 const deb = @import("bundle/linux/deb.zig");
 const resources = @import("bundle/common/resources.zig");
 const settings = @import("settings.zig");
@@ -79,7 +80,7 @@ pub fn project(
     const output_root = b.getInstallPath(.prefix, "bundle");
 
     if (config.zip) |options| {
-        const path = try artifactPath(io, arena, output_root, "zip", "zip", config, target_name);
+        const path = try artifactPath(io, arena, output_root, .zip, config, target_name);
         var file = try createOutputFile(io, path);
         defer file.close(io);
         zip.write(io, file, payload.entries.items, arena, .{
@@ -95,7 +96,7 @@ pub fn project(
     }
 
     if (config.tar_gz) |options| {
-        const path = try artifactPath(io, arena, output_root, "tar.gz", "tar.gz", config, target_name);
+        const path = try artifactPath(io, arena, output_root, .tar_gz, config, target_name);
         var file = try createOutputFile(io, path);
         defer file.close(io);
         tar_gz.write(io, file, payload.entries.items, .{ .level = options.level }) catch |err| {
@@ -105,15 +106,17 @@ pub fn project(
     }
 
     if (config.deb) |options| {
-        const dir = try std.fs.path.join(arena, &.{ output_root, "deb" });
-        try Io.Dir.cwd().createDirPath(io, dir);
+        const dir = try formatDir(io, arena, output_root, .deb);
 
         const package_basename = try std.fmt.allocPrint(arena, "{s}_{s}_{s}", .{
             config.name,
             config.version,
             deb_arch.?,
         });
-        const file_name = try std.fmt.allocPrint(arena, "{s}.deb", .{package_basename});
+        const file_name = try std.fmt.allocPrint(arena, "{s}{s}", .{
+            package_basename,
+            capabilities.extension(.deb),
+        });
         const path = try std.fs.path.join(arena, &.{ dir, file_name });
 
         var file = try createOutputFile(io, path);
@@ -146,13 +149,13 @@ pub fn project(
         const runtime = config.setup_runtime orelse return step.fail("setup runtime was not built", .{});
         const runtime_path = try resolveLazyPath(b, step, runtime, arena);
 
-        const dir = try std.fs.path.join(arena, &.{ output_root, "setup" });
-        try Io.Dir.cwd().createDirPath(io, dir);
+        const dir = try formatDir(io, arena, output_root, .setup_exe);
 
-        const file_name = try std.fmt.allocPrint(arena, "{s}_{s}_{s}-setup.exe", .{
+        const file_name = try std.fmt.allocPrint(arena, "{s}_{s}_{s}-setup{s}", .{
             config.name,
             config.version,
             @tagName(target.result.cpu.arch),
+            capabilities.extension(.setup_exe),
         });
         const path = try std.fs.path.join(arena, &.{ dir, file_name });
 
@@ -209,21 +212,30 @@ fn artifactPath(
     io: Io,
     allocator: std.mem.Allocator,
     output_root: []const u8,
-    directory: []const u8,
-    extension: []const u8,
+    format: capabilities.Format,
     config: *const Settings,
     target_name: []const u8,
 ) ![]const u8 {
-    const dir = try std.fs.path.join(allocator, &.{ output_root, directory });
-    try Io.Dir.cwd().createDirPath(io, dir);
+    const dir = try formatDir(io, allocator, output_root, format);
 
-    const file_name = try std.fmt.allocPrint(allocator, "{s}-{s}-{s}.{s}", .{
+    const file_name = try std.fmt.allocPrint(allocator, "{s}-{s}-{s}{s}", .{
         config.name,
         config.version,
         target_name,
-        extension,
+        capabilities.extension(format),
     });
     return std.fs.path.join(allocator, &.{ dir, file_name });
+}
+
+fn formatDir(
+    io: Io,
+    allocator: std.mem.Allocator,
+    output_root: []const u8,
+    format: capabilities.Format,
+) ![]const u8 {
+    const dir = try std.fs.path.join(allocator, &.{ output_root, @tagName(format) });
+    try Io.Dir.cwd().createDirPath(io, dir);
+    return dir;
 }
 
 fn createOutputFile(io: Io, path: []const u8) !Io.File {

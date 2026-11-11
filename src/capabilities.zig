@@ -32,6 +32,16 @@ pub fn check(
     return checkSpec(spec(format), host_os, host_arch, target_os, target_arch);
 }
 
+pub fn extension(format: Format) []const u8 {
+    return switch (format) {
+        .zip => ".zip",
+        .tar_gz => ".tar.gz",
+        .deb => ".deb",
+        // The installer uses `-setup.exe`; the extension itself stays `.exe`.
+        .setup_exe => ".exe",
+    };
+}
+
 pub fn hostName(host: Host) []const u8 {
     return switch (host) {
         .any => "any",
@@ -67,7 +77,7 @@ test "deb requires linux target" {
     try std.testing.expectError(error.UnsupportedTarget, check(.deb, .windows, .x86_64, .windows, .x86_64));
 }
 
-test "setup.exe requires windows target" {
+test "setup_exe requires windows target" {
     try check(.setup_exe, .linux, .x86_64, .windows, .x86_64);
     try std.testing.expectError(
         error.UnsupportedTarget,
