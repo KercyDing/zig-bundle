@@ -138,6 +138,7 @@ extern "advapi32" fn RegSetValueExW(
 extern "advapi32" fn RegCloseKey(key: windows.HKEY) callconv(.winapi) u32;
 extern "advapi32" fn RegDeleteTreeW(key: windows.HKEY, sub_key: windows.LPCWSTR) callconv(.winapi) u32;
 
+extern "kernel32" fn SetCurrentDirectoryW(path: windows.LPCWSTR) callconv(.winapi) c_int;
 extern "kernel32" fn MoveFileExW(
     existing: windows.LPCWSTR,
     new: ?windows.LPCWSTR,
@@ -180,15 +181,29 @@ pub fn main(init: std.process.Init) !void {
     const executable_path = try std.process.executablePathAlloc(io, gpa);
     defer gpa.free(executable_path);
 
+    if (!uninstall and std.ascii.eqlIgnoreCase(std.fs.path.basename(executable_path), "uninstall.exe")) {
+        uninstall = true;
+    }
+
     const manifest = try readManifest(arena, io, executable_path);
 
     if (uninstall) {
+        const install_dir = std.fs.path.dirname(executable_path) orelse return error.InvalidUninstaller;
+
         if (!silent) {
-            const content = try std.fmt.allocPrint(arena, "This will remove {s} {s} and its shortcuts.", .{
+            const icons = if (manifest.icon.len > 0)
+                loadSetupIcons(init, arena, executable_path, manifest)
+            else
+                SetupIcons{};
+
+            if (!try gui.uninstallPage(
+                arena,
                 manifest.name,
                 manifest.version,
-            });
-            if (!gui.confirmDialog(arena, "Uninstall", "Uninstall this application?", content)) return;
+                install_dir,
+                icons.window,
+                icons.page,
+            )) return;
         }
 
         uninstallApp(init, arena, executable_path, manifest) catch |err| {
@@ -200,7 +215,12 @@ pub fn main(init: std.process.Init) !void {
         return;
     }
 
-    const install_dir = try chooseInstallDir(init, arena, manifest, target_dir, silent);
+    const icons = if (!silent and manifest.icon.len > 0)
+        loadSetupIcons(init, arena, executable_path, manifest)
+    else
+        SetupIcons{};
+
+    const install_dir = try chooseInstallDir(init, arena, manifest, target_dir, silent, icons);
     if (install_dir == null) return;
 
     const installed = installApp(init, arena, executable_path, manifest, install_dir.?, !silent) catch |err| {
@@ -215,6 +235,8 @@ pub fn main(init: std.process.Init) !void {
             manifest.version,
             manifest.launch,
             manifest.desktop,
+            icons.window,
+            icons.page,
         ) catch |err| {
             gui.showError(arena, "Setup failed", @errorName(err));
             return err;
@@ -285,6 +307,7 @@ fn chooseInstallDir(
     manifest: Manifest,
     target_dir: ?[]const u8,
     silent: bool,
+    icons: SetupIcons,
 ) !?[]const u8 {
     const default_dir = if (target_dir) |dir| blk: {
         break :blk try allocator.dupe(u8, dir);
@@ -306,8 +329,15 @@ fn chooseInstallDir(
         manifest.version,
         default_dir,
         manifest.payload_size,
+        icons.window,
+        icons.page,
     );
 }
+
+const SetupIcons = struct {
+    window: ?*anyopaque = null,
+    page: ?*anyopaque = null,
+};
 
 const Installed = struct {
     install_path: []const u8,
@@ -362,11 +392,15 @@ fn uninstallApp(
 ) !void {
     const io = init.io;
     const install_dir = std.fs.path.dirname(executable_path) orelse return error.InvalidUninstaller;
+    const temp_dir = init.environ_map.get("TEMP") orelse install_dir;
+
+    if (std.unicode.wtf8ToWtf16LeAllocZ(allocator, temp_dir)) |temp_w| {
+        _ = SetCurrentDirectoryW(temp_w.ptr);
+    } else |_| {}
 
     try removeShortcuts(init, allocator, manifest);
     removeUninstallRegistry(allocator, manifest);
 
-    const temp_dir = init.environ_map.get("TEMP") orelse install_dir;
     const temp_path = try std.fmt.allocPrint(allocator, "{s}\\zig-bundle-uninstall-{x}.exe", .{
         temp_dir,
         windows.GetCurrentProcessId(),
@@ -379,6 +413,67 @@ fn uninstallApp(
         try removeContents(allocator, io, install_dir, executable_path);
         scheduleDelete(allocator, executable_path);
     }
+}
+
+fn loadSetupIcons(
+    init: std.process.Init,
+    allocator: std.mem.Allocator,
+    executable_path: []const u8,
+    manifest: Manifest,
+) SetupIcons {
+    const temp_dir = init.environ_map.get("TEMP") orelse return .{};
+    const path = std.fmt.allocPrint(allocator, "{s}\\zig-bundle-icon-{x}.ico", .{
+        temp_dir,
+        windows.GetCurrentProcessId(),
+    }) catch return .{};
+
+    extractPayloadIcon(init.io, executable_path, manifest.payload_offset, manifest.icon, path) catch return .{};
+    defer Io.Dir.cwd().deleteFile(init.io, path) catch {};
+    return .{
+        .window = gui.loadIcon(allocator, path),
+        .page = gui.loadImage(allocator, path),
+    };
+}
+
+fn extractPayloadIcon(
+    io: Io,
+    executable_path: []const u8,
+    payload_offset: u64,
+    entry_name: []const u8,
+    output_path: []const u8,
+) !void {
+    var self_file = try Io.Dir.cwd().openFile(io, executable_path, .{});
+    defer self_file.close(io);
+
+    var read_buffer: [16 * 1024]u8 = undefined;
+    var reader = self_file.reader(io, &read_buffer);
+    try reader.seekTo(payload_offset);
+
+    var gzip_buffer: [flate.max_window_len]u8 = undefined;
+    var gzip = flate.Decompress.init(&reader.interface, .gzip, &gzip_buffer);
+
+    var file_name_buffer: [Io.Dir.max_path_bytes]u8 = undefined;
+    var link_name_buffer: [Io.Dir.max_path_bytes]u8 = undefined;
+    var iterator = std.tar.Iterator.init(&gzip.reader, .{
+        .file_name_buffer = &file_name_buffer,
+        .link_name_buffer = &link_name_buffer,
+    });
+
+    while (try iterator.next()) |file| {
+        if (file.kind != .file) continue;
+        if (!std.mem.eql(u8, std.mem.trimEnd(u8, file.name, "/\\"), entry_name)) continue;
+
+        var output = try Io.Dir.cwd().createFile(io, output_path, .{ .truncate = true });
+        defer output.close(io);
+
+        var write_buffer: [16 * 1024]u8 = undefined;
+        var writer = output.writer(io, &write_buffer);
+        try iterator.streamRemaining(file, &writer.interface);
+        try writer.interface.flush();
+        return;
+    }
+
+    return error.IconNotFound;
 }
 
 /// Extracts with overwrite semantics, unlike `std.tar.extract`.

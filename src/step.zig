@@ -60,6 +60,7 @@ pub fn add(b: *std.Build, options: Options) *BundleStep {
         runtime.subsystem = .windows;
         runtime.root_module.linkSystemLibrary("comctl32", .{});
         runtime.root_module.linkSystemLibrary("gdi32", .{});
+        runtime.root_module.linkSystemLibrary("gdiplus", .{});
         self.step.dependOn(&runtime.step);
         self.settings.setup_runtime = runtime.getEmittedBin();
     }

@@ -50,8 +50,10 @@ const bm_setcheck: u32 = 0x00F1;
 const bm_getcheck: u32 = 0x00F0;
 const bst_checked: usize = 1;
 const di_normal: c_int = 3;
+const interpolation_high_quality_bicubic: c_int = 7;
 const bn_clicked: u16 = 0;
 const en_change: u16 = 0x0300;
+const es_readonly: u32 = 0x0800;
 
 const ws_child: u32 = 0x40000000;
 const ws_visible: u32 = 0x10000000;
@@ -70,6 +72,9 @@ const sm_cyscreen: c_int = 1;
 const default_face: usize = 16;
 const makeintresource_arrow: ?*const anyopaque = @ptrFromInt(32512);
 const makeintresource_appicon: ?*const anyopaque = @ptrFromInt(32512);
+
+const image_icon: u32 = 1;
+const lr_loadfromfile: u32 = 0x10;
 const mb_ok: u32 = 0x0;
 const mb_iconwarning: u32 = 0x30;
 
@@ -189,16 +194,22 @@ const IShellItem = extern struct {
     };
 };
 
+pub const PageMode = enum { install, uninstall };
+
 const State = struct {
     allocator: std.mem.Allocator,
     default_dir: []const u8,
     required_bytes: u64,
+    mode: PageMode = .install,
     edit: ?*anyopaque,
     browse_button: ?*anyopaque,
     install_button: ?*anyopaque,
     cancel_button: ?*anyopaque,
     required_label: ?*anyopaque,
     available_label: ?*anyopaque,
+    dpi: c_int = 0,
+    icon: ?*anyopaque = null,
+    page_image: ?*anyopaque = null,
     result: ?[]const u8 = null,
 };
 
@@ -206,6 +217,7 @@ const FinishState = struct {
     allocator: std.mem.Allocator,
     dpi: c_int,
     icon: ?*anyopaque,
+    page_image: ?*anyopaque = null,
     run_check: ?*anyopaque,
     desktop_check: ?*anyopaque,
     run_app: bool = false,
@@ -264,6 +276,55 @@ extern "user32" fn DrawIconEx(
     flicker: ?*anyopaque,
     flags: c_int,
 ) callconv(.winapi) c_int;
+const GdiplusStartupInput = extern struct {
+    version: u32,
+    debug_event_callback: ?*anyopaque,
+    suppress_background_thread: c_int,
+    suppress_external_codecs: c_int,
+};
+
+var gdiplus_token: usize = 0;
+
+extern "gdiplus" fn GdiplusStartup(token: *usize, input: *const GdiplusStartupInput, output: ?*anyopaque) callconv(.winapi) u32;
+extern "gdiplus" fn GdipLoadImageFromFile(filename: windows.LPCWSTR, image: *?*anyopaque) callconv(.winapi) u32;
+extern "gdiplus" fn GdipCreateFromHDC(hdc: ?*anyopaque, graphics: *?*anyopaque) callconv(.winapi) u32;
+extern "gdiplus" fn GdipSetInterpolationMode(graphics: ?*anyopaque, mode: c_int) callconv(.winapi) u32;
+extern "gdiplus" fn GdipDrawImageRectI(graphics: ?*anyopaque, image: ?*anyopaque, x: c_int, y: c_int, width: c_int, height: c_int) callconv(.winapi) u32;
+extern "gdiplus" fn GdipDeleteGraphics(graphics: ?*anyopaque) callconv(.winapi) u32;
+
+fn ensureGdiplus() bool {
+    if (gdiplus_token != 0) return true;
+
+    var input = GdiplusStartupInput{
+        .version = 1,
+        .debug_event_callback = null,
+        .suppress_background_thread = 0,
+        .suppress_external_codecs = 0,
+    };
+    var token: usize = 0;
+    if (GdiplusStartup(&token, &input, null) != 0) return false;
+    gdiplus_token = token;
+    return true;
+}
+
+pub fn loadImage(allocator: std.mem.Allocator, path: []const u8) ?*anyopaque {
+    if (!ensureGdiplus()) return null;
+
+    const path_w = std.unicode.wtf8ToWtf16LeAllocZ(allocator, path) catch return null;
+    var image: ?*anyopaque = null;
+    if (GdipLoadImageFromFile(path_w.ptr, &image) != 0) return null;
+    return image;
+}
+
+fn drawImage(hdc: ?*anyopaque, image: ?*anyopaque, x: c_int, y: c_int, size: c_int) void {
+    var graphics: ?*anyopaque = null;
+    if (GdipCreateFromHDC(hdc, &graphics) != 0 or graphics == null) return;
+
+    _ = GdipSetInterpolationMode(graphics, interpolation_high_quality_bicubic);
+    _ = GdipDrawImageRectI(graphics, image, x, y, size, size);
+    _ = GdipDeleteGraphics(graphics);
+}
+
 extern "gdi32" fn CreateSolidBrush(color: u32) callconv(.winapi) ?*anyopaque;
 extern "gdi32" fn DeleteObject(object: ?*anyopaque) callconv(.winapi) c_int;
 extern "gdi32" fn CreateFontW(
@@ -285,6 +346,14 @@ extern "gdi32" fn CreateFontW(
 extern "user32" fn SetProcessDPIAware() callconv(.winapi) c_int;
 extern "user32" fn SetFocus(hwnd: ?*anyopaque) callconv(.winapi) ?*anyopaque;
 extern "user32" fn LoadIconW(instance: ?*anyopaque, name: ?*const anyopaque) callconv(.winapi) ?*anyopaque;
+extern "user32" fn LoadImageW(
+    instance: ?*anyopaque,
+    name: ?*const anyopaque,
+    type: u32,
+    cx: c_int,
+    cy: c_int,
+    flags: u32,
+) callconv(.winapi) ?*anyopaque;
 extern "user32" fn LoadCursorW(instance: ?*anyopaque, name: ?*const anyopaque) callconv(.winapi) ?*anyopaque;
 extern "user32" fn MessageBoxW(
     owner: ?*anyopaque,
@@ -330,17 +399,48 @@ extern "ole32" fn CoCreateInstance(
     out: *?*anyopaque,
 ) callconv(.winapi) HRESULT;
 
+pub fn loadIcon(allocator: std.mem.Allocator, path: []const u8) ?*anyopaque {
+    const path_w = std.unicode.wtf8ToWtf16LeAllocZ(allocator, path) catch return null;
+    return LoadImageW(null, @ptrCast(path_w.ptr), image_icon, 48, 48, lr_loadfromfile);
+}
+
 pub fn chooseInstallLocation(
     allocator: std.mem.Allocator,
     app_name: []const u8,
     app_version: []const u8,
     default_dir: []const u8,
     required_bytes: u64,
+    app_icon: ?*anyopaque,
+    app_image: ?*anyopaque,
+) !?[]const u8 {
+    return runPage(.install, allocator, app_name, app_version, default_dir, required_bytes, app_icon, app_image);
+}
+
+pub fn uninstallPage(
+    allocator: std.mem.Allocator,
+    app_name: []const u8,
+    app_version: []const u8,
+    install_dir: []const u8,
+    app_icon: ?*anyopaque,
+    app_image: ?*anyopaque,
+) !bool {
+    return (try runPage(.uninstall, allocator, app_name, app_version, install_dir, 0, app_icon, app_image)) != null;
+}
+
+fn runPage(
+    mode: PageMode,
+    allocator: std.mem.Allocator,
+    app_name: []const u8,
+    app_version: []const u8,
+    default_dir: []const u8,
+    required_bytes: u64,
+    app_icon: ?*anyopaque,
+    app_image: ?*anyopaque,
 ) !?[]const u8 {
     _ = SetProcessDPIAware();
 
     const instance = GetModuleHandleW(null);
-    const icon = LoadIconW(null, makeintresource_appicon);
+    const icon = app_icon orelse LoadIconW(null, makeintresource_appicon);
     _ = RegisterClassExW(&.{
         .size = @sizeOf(WNDCLASSEXW),
         .style = 0,
@@ -360,6 +460,7 @@ pub fn chooseInstallLocation(
         .allocator = allocator,
         .default_dir = default_dir,
         .required_bytes = required_bytes,
+        .mode = mode,
         .edit = null,
         .browse_button = null,
         .install_button = null,
@@ -372,10 +473,17 @@ pub fn chooseInstallLocation(
         const system_dpi = GetDpiForSystem();
         break :blk if (system_dpi == 0) 96 else @intCast(system_dpi);
     };
+    state.dpi = dpi;
+    state.icon = app_icon;
+    state.page_image = app_image;
+
     const normal_font = createFont(dpi, 9, 400);
     const heading_font = createFont(dpi, 12, 600);
 
-    const title = try std.fmt.allocPrint(allocator, "{s} Setup", .{app_name});
+    const title = if (mode == .uninstall)
+        try std.fmt.allocPrint(allocator, "{s} Uninstall", .{app_name})
+    else
+        try std.fmt.allocPrint(allocator, "{s} Setup", .{app_name});
     const title_w = try std.unicode.wtf8ToWtf16LeAllocZ(allocator, title);
     const screen_width = GetSystemMetrics(sm_cxscreen);
     const screen_height = GetSystemMetrics(sm_cyscreen);
@@ -399,27 +507,61 @@ pub fn chooseInstallLocation(
 
     _ = SetWindowLongPtrW(hwnd, gwlp_userdata, @bitCast(@intFromPtr(&state)));
 
-    const heading = std.unicode.wtf8ToWtf16LeStringLiteral("Choose Install Location");
-    const description = try std.fmt.allocPrint(
-        allocator,
-        "Setup will install {s} {s} in the following folder. To install in a different folder, click Browse and select another folder. Click Install to start the installation.",
-        .{ app_name, app_version },
-    );
+    const heading = if (mode == .uninstall)
+        try std.fmt.allocPrint(allocator, "Uninstall {s}", .{app_name})
+    else
+        try std.fmt.allocPrint(allocator, "Choose Install Location", .{});
+    const heading_w = try std.unicode.wtf8ToWtf16LeAllocZ(allocator, heading);
+    const description = if (mode == .uninstall)
+        try std.fmt.allocPrint(
+            allocator,
+            "{s} will be uninstalled from the following folder. Click Uninstall to start the uninstallation.",
+            .{app_name},
+        )
+    else
+        try std.fmt.allocPrint(
+            allocator,
+            "Setup will install {s} {s} in the following folder. To install in a different folder, click Browse and select another folder. Click Install to start the installation.",
+            .{ app_name, app_version },
+        );
     const description_w = try std.unicode.wtf8ToWtf16LeAllocZ(allocator, description);
-    const destination = std.unicode.wtf8ToWtf16LeStringLiteral("Destination Folder");
+    const destination = if (mode == .uninstall)
+        std.unicode.wtf8ToWtf16LeStringLiteral("Uninstalling from:")
+    else
+        std.unicode.wtf8ToWtf16LeStringLiteral("Destination Folder");
     const browse = std.unicode.wtf8ToWtf16LeStringLiteral("Browse...");
-    const install = std.unicode.wtf8ToWtf16LeStringLiteral("Install");
+    const action = if (mode == .uninstall)
+        std.unicode.wtf8ToWtf16LeStringLiteral("Uninstall")
+    else
+        std.unicode.wtf8ToWtf16LeStringLiteral("Install");
     const cancel = std.unicode.wtf8ToWtf16LeStringLiteral("Cancel");
 
-    _ = createControl(hwnd, class_static, heading, ws_child | ws_visible, scale(24, dpi), scale(20, dpi), scale(520, dpi), scale(28, dpi), 0, heading_font);
-    _ = createControl(hwnd, class_static, description_w.ptr, ws_child | ws_visible, scale(24, dpi), scale(58, dpi), scale(536, dpi), scale(60, dpi), 0, normal_font);
-    _ = createControl(hwnd, class_static, destination, ws_child | ws_visible, scale(24, dpi), scale(126, dpi), scale(300, dpi), scale(20, dpi), 0, normal_font);
+    _ = createControl(hwnd, class_static, heading_w.ptr, ws_child | ws_visible, scale(24, dpi), scale(20, dpi), scale(480, dpi), scale(28, dpi), 0, heading_font);
 
-    state.edit = createControl(hwnd, class_edit, null, ws_child | ws_visible | ws_border | ws_tabstop | es_autohscroll, scale(24, dpi), scale(146, dpi), scale(430, dpi), scale(21, dpi), id_edit, normal_font);
-    state.browse_button = createControl(hwnd, class_button, browse, ws_child | ws_visible | ws_tabstop, scale(462, dpi), scale(145, dpi), scale(96, dpi), scale(23, dpi), id_browse, normal_font);
-    state.required_label = createControl(hwnd, class_static, null, ws_child | ws_visible, scale(24, dpi), scale(286, dpi), scale(360, dpi), scale(20, dpi), id_required, normal_font);
-    state.available_label = createControl(hwnd, class_static, null, ws_child | ws_visible, scale(24, dpi), scale(310, dpi), scale(360, dpi), scale(20, dpi), id_available, normal_font);
-    state.install_button = createControl(hwnd, class_button, install, ws_child | ws_visible | ws_tabstop | ws_group | bs_defpushbutton, scale(370, dpi), scale(340, dpi), scale(96, dpi), scale(30, dpi), id_install, normal_font);
+    if (mode == .uninstall) {
+        const subtitle = try std.fmt.allocPrint(allocator, "Remove {s} from your computer.", .{app_name});
+        const subtitle_w = try std.unicode.wtf8ToWtf16LeAllocZ(allocator, subtitle);
+        _ = createControl(hwnd, class_static, subtitle_w.ptr, ws_child | ws_visible, scale(24, dpi), scale(50, dpi), scale(480, dpi), scale(20, dpi), 0, normal_font);
+    }
+
+    const description_y: c_int = if (mode == .uninstall) 80 else 58;
+    _ = createControl(hwnd, class_static, description_w.ptr, ws_child | ws_visible, scale(24, dpi), scale(description_y, dpi), scale(480, dpi), scale(60, dpi), 0, normal_font);
+
+    const label_width: c_int = if (mode == .uninstall) 130 else 300;
+    const edit_x: c_int = if (mode == .uninstall) 160 else 24;
+    const edit_y: c_int = if (mode == .uninstall) 123 else 146;
+    const edit_width: c_int = if (mode == .uninstall) 400 else 430;
+    _ = createControl(hwnd, class_static, destination, ws_child | ws_visible, scale(24, dpi), scale(126, dpi), scale(label_width, dpi), scale(20, dpi), 0, normal_font);
+
+    const edit_style = ws_child | ws_visible | ws_border | es_autohscroll |
+        (if (mode == .uninstall) es_readonly else ws_tabstop);
+    state.edit = createControl(hwnd, class_edit, null, edit_style, scale(edit_x, dpi), scale(edit_y, dpi), scale(edit_width, dpi), scale(21, dpi), id_edit, normal_font);
+    if (mode == .install) {
+        state.browse_button = createControl(hwnd, class_button, browse, ws_child | ws_visible | ws_tabstop, scale(462, dpi), scale(145, dpi), scale(96, dpi), scale(23, dpi), id_browse, normal_font);
+        state.required_label = createControl(hwnd, class_static, null, ws_child | ws_visible, scale(24, dpi), scale(286, dpi), scale(360, dpi), scale(20, dpi), id_required, normal_font);
+        state.available_label = createControl(hwnd, class_static, null, ws_child | ws_visible, scale(24, dpi), scale(310, dpi), scale(360, dpi), scale(20, dpi), id_available, normal_font);
+    }
+    state.install_button = createControl(hwnd, class_button, action, ws_child | ws_visible | ws_tabstop | ws_group | bs_defpushbutton, scale(370, dpi), scale(340, dpi), scale(96, dpi), scale(30, dpi), id_install, normal_font);
     state.cancel_button = createControl(hwnd, class_button, cancel, ws_child | ws_visible | ws_tabstop, scale(474, dpi), scale(340, dpi), scale(96, dpi), scale(30, dpi), id_cancel, normal_font);
 
     const default_w = try std.unicode.wtf8ToWtf16LeAllocZ(allocator, default_dir);
@@ -445,11 +587,13 @@ pub fn finishPage(
     app_version: []const u8,
     default_run: bool,
     default_desktop: bool,
+    app_icon: ?*anyopaque,
+    app_image: ?*anyopaque,
 ) !FinishResult {
     _ = SetProcessDPIAware();
 
     const instance = GetModuleHandleW(null);
-    const icon = LoadIconW(null, makeintresource_appicon);
+    const icon = app_icon orelse LoadIconW(null, makeintresource_appicon);
     _ = RegisterClassExW(&.{
         .size = @sizeOf(WNDCLASSEXW),
         .style = 0,
@@ -476,6 +620,7 @@ pub fn finishPage(
         .allocator = allocator,
         .dpi = dpi,
         .icon = icon,
+        .page_image = app_image,
         .run_check = null,
         .desktop_check = null,
     };
@@ -589,7 +734,11 @@ fn finishProc(hwnd: ?*anyopaque, message: u32, wparam: usize, lparam: isize) cal
                 const icon_size = scale(72, state.dpi);
                 const x = @divTrunc(scale(160, state.dpi) - icon_size, 2);
                 const y = @divTrunc(client.bottom - icon_size, 2);
-                _ = DrawIconEx(hdc, x, y, state.icon, icon_size, icon_size, 0, null, di_normal);
+                if (state.page_image) |image| {
+                    drawImage(hdc, image, x, y, icon_size);
+                } else {
+                    _ = DrawIconEx(hdc, x, y, state.icon, icon_size, icon_size, 0, null, di_normal);
+                }
                 _ = EndPaint(hwnd, &paint);
             }
             return 0;
@@ -614,15 +763,6 @@ fn getFinishState(hwnd: ?*anyopaque) ?*FinishState {
 
 fn rgb(red: u32, green: u32, blue: u32) u32 {
     return red | (green << 8) | (blue << 16);
-}
-
-pub fn confirmDialog(
-    allocator: std.mem.Allocator,
-    title: []const u8,
-    instruction: []const u8,
-    content: []const u8,
-) bool {
-    return taskDialog(allocator, title, instruction, content, tdcbf_ok | tdcbf_cancel, td_information_icon) == idok;
 }
 
 pub fn showInfo(allocator: std.mem.Allocator, title: []const u8, content: []const u8) void {
@@ -657,6 +797,24 @@ fn windowProc(hwnd: ?*anyopaque, message: u32, wparam: usize, lparam: isize) cal
             }
             return 0;
         },
+        wm_paint => {
+            var paint: PAINTSTRUCT = undefined;
+            const hdc = BeginPaint(hwnd, &paint);
+            if (hdc != null) {
+                var client: RECT = undefined;
+                _ = GetClientRect(hwnd, &client);
+
+                const icon_size = scale(48, state.dpi);
+                const x = client.right - scale(24, state.dpi) - icon_size;
+                if (state.page_image) |image| {
+                    drawImage(hdc, image, x, scale(20, state.dpi), icon_size);
+                } else if (state.icon) |icon| {
+                    _ = DrawIconEx(hdc, x, scale(20, state.dpi), icon, icon_size, icon_size, 0, null, di_normal);
+                }
+                _ = EndPaint(hwnd, &paint);
+            }
+            return 0;
+        },
         wm_close => {
             _ = DestroyWindow(hwnd);
             return 0;
@@ -671,6 +829,12 @@ fn windowProc(hwnd: ?*anyopaque, message: u32, wparam: usize, lparam: isize) cal
 
 fn installClicked(hwnd: ?*anyopaque, state: *State) void {
     const path = readEditText(state) catch null;
+    if (state.mode == .uninstall) {
+        state.result = path orelse state.default_dir;
+        _ = DestroyWindow(hwnd);
+        return;
+    }
+
     if (path == null or path.?.len == 0) {
         const text = std.unicode.wtf8ToWtf16LeStringLiteral("Please choose an installation directory.");
         const caption = std.unicode.wtf8ToWtf16LeStringLiteral("Install");
@@ -693,6 +857,8 @@ fn browseClicked(hwnd: ?*anyopaque, state: *State) void {
 }
 
 fn updateSpaceInfo(state: *State) void {
+    if (state.required_label == null or state.available_label == null) return;
+
     const path = readEditText(state) catch null;
     const target = path orelse state.default_dir;
     const required_mb = (state.required_bytes + 1024 * 1024 - 1) / (1024 * 1024);
