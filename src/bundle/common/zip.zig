@@ -62,62 +62,69 @@ pub fn write(
         const offset = writer.logicalPos();
         if (offset > std.math.maxInt(u32)) return error.FileTooLarge;
 
-        if (entry.kind == .dir) {
-            const name = try std.fmt.allocPrint(allocator, "{s}/", .{entry.archive_path});
-            if (name.len > std.math.maxInt(u16)) return error.NameTooLong;
-            try writeLocalHeader(&writer.interface, name, 0);
-            try writer.interface.flush();
-            try central.append(allocator, .{
-                .name = name,
-                .method = 0,
-                .crc = 0,
-                .compressed_size = 0,
-                .uncompressed_size = 0,
-                .offset = @intCast(offset),
-                .mode = 0o40755,
-                .directory = true,
-            });
-            continue;
+        switch (entry.kind) {
+            .dir => {
+                const name = try std.fmt.allocPrint(allocator, "{s}/", .{entry.archive_path});
+                if (name.len > std.math.maxInt(u16)) return error.NameTooLong;
+                try writeLocalHeader(&writer.interface, name, 0);
+                try writer.interface.flush();
+                try central.append(allocator, .{
+                    .name = name,
+                    .method = 0,
+                    .crc = 0,
+                    .compressed_size = 0,
+                    .uncompressed_size = 0,
+                    .offset = @intCast(offset),
+                    .mode = 0o40755,
+                    .directory = true,
+                });
+            },
+            .file => {
+                const method: u16 = switch (options.compression) {
+                    .store => 0,
+                    .deflate => 8,
+                };
+                if (entry.archive_path.len > std.math.maxInt(u16)) return error.NameTooLong;
+
+                try writeLocalHeader(&writer.interface, entry.archive_path, method);
+
+                const data_start = writer.logicalPos();
+                const sizes = switch (options.compression) {
+                    .store => try storeFile(io, &writer.interface, entry.source_path, &chunk),
+                    .deflate => try deflateFile(io, &writer.interface, entry.source_path, &chunk, &history, options.level),
+                };
+
+                try writer.interface.flush();
+                const data_end = writer.logicalPos();
+                const compressed_size = data_end - data_start;
+                if (compressed_size > std.math.maxInt(u32) or sizes.uncompressed_size > std.math.maxInt(u32)) {
+                    return error.FileTooLarge;
+                }
+
+                // Fill in the crc and sizes of the local header written above.
+                try writer.seekTo(offset + 14);
+                var patch: [12]u8 = undefined;
+                std.mem.writeInt(u32, patch[0..4], sizes.crc, .little);
+                std.mem.writeInt(u32, patch[4..8], @intCast(compressed_size), .little);
+                std.mem.writeInt(u32, patch[8..12], @intCast(sizes.uncompressed_size), .little);
+                try writer.interface.writeAll(&patch);
+                try writer.seekTo(data_end);
+
+                try central.append(allocator, .{
+                    .name = entry.archive_path,
+                    .method = method,
+                    .crc = sizes.crc,
+                    .compressed_size = @intCast(compressed_size),
+                    .uncompressed_size = @intCast(sizes.uncompressed_size),
+                    .offset = @intCast(offset),
+                    .mode = switch (entry.executable) {
+                        true => 0o100755,
+                        false => 0o100644,
+                    },
+                    .directory = false,
+                });
+            },
         }
-
-        const compress = options.compression == .deflate;
-        const method: u16 = if (compress) 8 else 0;
-        if (entry.archive_path.len > std.math.maxInt(u16)) return error.NameTooLong;
-
-        try writeLocalHeader(&writer.interface, entry.archive_path, method);
-
-        const data_start = writer.logicalPos();
-        const sizes = if (compress)
-            try deflateFile(io, &writer.interface, entry.source_path, &chunk, &history, options.level)
-        else
-            try storeFile(io, &writer.interface, entry.source_path, &chunk);
-
-        try writer.interface.flush();
-        const data_end = writer.logicalPos();
-        const compressed_size = data_end - data_start;
-        if (compressed_size > std.math.maxInt(u32) or sizes.uncompressed_size > std.math.maxInt(u32)) {
-            return error.FileTooLarge;
-        }
-
-        // Fill in the crc and sizes of the local header written above.
-        try writer.seekTo(offset + 14);
-        var patch: [12]u8 = undefined;
-        std.mem.writeInt(u32, patch[0..4], sizes.crc, .little);
-        std.mem.writeInt(u32, patch[4..8], @intCast(compressed_size), .little);
-        std.mem.writeInt(u32, patch[8..12], @intCast(sizes.uncompressed_size), .little);
-        try writer.interface.writeAll(&patch);
-        try writer.seekTo(data_end);
-
-        try central.append(allocator, .{
-            .name = entry.archive_path,
-            .method = method,
-            .crc = sizes.crc,
-            .compressed_size = @intCast(compressed_size),
-            .uncompressed_size = @intCast(sizes.uncompressed_size),
-            .offset = @intCast(offset),
-            .mode = if (entry.executable) 0o100755 else 0o100644,
-            .directory = false,
-        });
     }
 
     if (central.items.len > std.math.maxInt(u16)) return error.TooManyEntries;

@@ -49,20 +49,22 @@ pub fn bundle(
     defer data_items.deinit(allocator);
 
     for (config.payload) |entry| {
-        const path = if (entry.executable)
-            try std.fmt.allocPrint(allocator, "usr/bin/{s}", .{entry.archive_path})
-        else
-            try std.fmt.allocPrint(allocator, "usr/lib/{s}/{s}", .{ config.name, entry.archive_path });
+        const path = switch (entry.executable) {
+            true => try std.fmt.allocPrint(allocator, "usr/bin/{s}", .{entry.archive_path}),
+            false => try std.fmt.allocPrint(allocator, "usr/lib/{s}/{s}", .{ config.name, entry.archive_path }),
+        };
 
-        if (entry.kind == .dir) {
-            try data_items.append(allocator, .{ .path = path, .kind = .dir, .mode = 0o755 });
-        } else {
-            try data_items.append(allocator, .{
+        switch (entry.kind) {
+            .dir => try data_items.append(allocator, .{ .path = path, .kind = .dir, .mode = 0o755 }),
+            .file => try data_items.append(allocator, .{
                 .path = path,
                 .kind = .file,
-                .mode = if (entry.executable) 0o755 else 0o644,
+                .mode = switch (entry.executable) {
+                    true => 0o755,
+                    false => 0o644,
+                },
                 .content = .{ .file = entry.source_path },
-            });
+            }),
         }
     }
 
