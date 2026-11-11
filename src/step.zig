@@ -3,12 +3,16 @@ const std = @import("std");
 const bundle = @import("bundle.zig");
 const settings = @import("settings.zig");
 
+/// Configuration accepted by `add`; see `settings.Options`.
 pub const Options = settings.Options;
 
 /// Build step that produces the configured bundles.
 pub const BundleStep = struct {
+    /// Underlying build step. Depend on this to run the bundler.
     step: std.Build.Step,
+    /// Normalized configuration owned by the step.
     settings: settings.Settings,
+    /// Artifact paths produced by the last run.
     artifacts: []const []const u8 = &.{},
 
     /// Artifact paths produced by the last run.
@@ -18,6 +22,7 @@ pub const BundleStep = struct {
 };
 
 /// Registers a bundle step and returns it. Depend on `bundled.step` to run it.
+/// Formats and target compatibility are validated before the build starts.
 pub fn add(b: *std.Build, options: Options) *BundleStep {
     const self = b.allocator.create(BundleStep) catch @panic("OOM");
     self.* = .{

@@ -5,19 +5,32 @@ const root = @import("src/root.zig");
 
 // This file is imported directly by consumer build scripts via
 // `@import("bundle")`, so it re-exports the public configuration API.
+/// Registers the bundle build step.
 pub const add = root.add;
 
+/// Application metadata shared by every output format.
 pub const App = root.App;
+/// Build step that produces the configured bundles.
 pub const BundleStep = root.BundleStep;
+/// Compression algorithm used for ZIP entries.
 pub const Compression = root.Compression;
+/// Debian package options.
 pub const DebOptions = root.DebOptions;
+/// Bundle formats selectable from a build option.
 pub const Format = root.Format;
+/// Options for each enabled bundle format.
 pub const Formats = root.Formats;
+/// Executable and additional files to bundle.
 pub const Input = root.Input;
+/// Configuration accepted by `add`.
 pub const Options = root.Options;
+/// File or directory copied into the bundle.
 pub const Resource = root.Resource;
+/// Windows installer options.
 pub const SetupExeOptions = root.SetupExeOptions;
+/// tar.gz archive options.
 pub const TarGzOptions = root.TarGzOptions;
+/// ZIP archive options.
 pub const ZipOptions = root.ZipOptions;
 
 pub fn build(b: *std.Build) void {

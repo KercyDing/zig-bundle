@@ -19,18 +19,31 @@ const step = @import("step.zig");
 const tar_gz = @import("bundle/common/tar_gz.zig");
 const zip = @import("bundle/common/zip.zig");
 
+/// Application metadata shared by every output format.
 pub const App = settings.App;
+/// Compression algorithm used for ZIP entries.
 pub const Compression = settings.Compression;
+/// Debian package options.
 pub const DebOptions = settings.DebOptions;
+/// Bundle formats selectable from a build option.
 pub const Format = settings.Format;
+/// Options for each enabled bundle format.
 pub const Formats = settings.Formats;
+/// Executable and additional files to bundle.
 pub const Input = settings.Input;
+/// Configuration accepted by `add`.
 pub const Options = settings.Options;
+/// File or directory copied into the bundle.
 pub const Resource = settings.Resource;
+/// Windows installer options.
 pub const SetupExeOptions = settings.SetupExeOptions;
+/// tar.gz archive options.
 pub const TarGzOptions = settings.TarGzOptions;
+/// ZIP archive options.
 pub const ZipOptions = settings.ZipOptions;
+/// Registers the bundle build step.
 pub const add = step.add;
+/// Build step that produces the configured bundles.
 pub const BundleStep = step.BundleStep;
 
 test {

@@ -4,9 +4,11 @@ const capabilities = @import("capabilities.zig");
 
 /// Configuration accepted by `bundle.add`.
 pub const Options = struct {
+    /// Application metadata shared by every output format.
     app: App,
+    /// Executable and additional files to bundle.
     input: Input,
-    /// Defaults to a ZIP archive when omitted.
+    /// Formats to build. Defaults to a ZIP archive when omitted.
     formats: Formats = .{ .zip = .{} },
 };
 
@@ -14,7 +16,7 @@ pub const Options = struct {
 pub const App = struct {
     /// Product name used for file names and metadata.
     name: []const u8,
-    /// Reverse-DNS application identifier.
+    /// Reverse-DNS application identifier, e.g. `"com.example.app"`.
     identifier: []const u8,
     /// Semantic version, e.g. `"1.2.3"`.
     version: []const u8,
@@ -24,6 +26,7 @@ pub const App = struct {
     description: ?[]const u8 = null,
 };
 
+/// Application icon sources.
 pub const Icons = struct {
     /// PNG sources: files or directories scanned for `*.png`. Dimensions are
     /// read from each PNG header; Linux packages install them by size, and
@@ -33,6 +36,7 @@ pub const Icons = struct {
     ico: ?std.Build.LazyPath = null,
 };
 
+/// Executable and additional files to bundle.
 pub const Input = struct {
     /// Executable produced by the build.
     executable: *std.Build.Step.Compile,
@@ -42,6 +46,7 @@ pub const Input = struct {
     resources: []const Resource = &.{},
 };
 
+/// File or directory copied into the bundle.
 pub const Resource = struct {
     /// File or directory to copy. Directories are copied recursively.
     source: std.Build.LazyPath,
@@ -52,45 +57,73 @@ pub const Resource = struct {
     dest: ?[]const u8 = null,
 };
 
+/// Options for each enabled bundle format.
 pub const Formats = struct {
+    /// ZIP archive.
     zip: ?ZipOptions = null,
+    /// Gzip-compressed tar archive.
     tar_gz: ?TarGzOptions = null,
+    /// Debian package. Requires a Linux target.
     deb: ?DebOptions = null,
+    /// Windows installer. Requires a Windows target.
     setup_exe: ?SetupExeOptions = null,
 };
 
 /// Supported bundle formats, for command-line selection.
 pub const Format = std.meta.FieldEnum(Formats);
 
-pub const Compression = enum { store, deflate };
+/// Compression algorithm used for ZIP entries.
+pub const Compression = enum {
+    /// Store entries without compression.
+    store,
+    /// Deflate-compress entries.
+    deflate,
+};
 
+/// ZIP archive options.
 pub const ZipOptions = struct {
+    /// Compression algorithm.
     compression: Compression = .deflate,
     /// Deflate level, 1-9. Ignored when `compression` is `.store`.
     level: u4 = 6,
 };
 
+/// tar.gz archive options.
 pub const TarGzOptions = struct {
     /// Gzip level, 1-9.
     level: u4 = 6,
 };
 
+/// Debian package options.
 pub const DebOptions = struct {
     /// Debian package dependencies, e.g. `"libc6 (>= 2.31)"`.
     depends: []const []const u8 = &.{},
+    /// Debian section. Defaults to `"utils"`.
     section: ?[]const u8 = "utils",
+    /// Debian priority. Defaults to `"optional"`.
     priority: ?[]const u8 = "optional",
 };
 
+/// Windows installer options.
 pub const SetupExeOptions = struct {
+    /// Per-user install by default; `all_users` requires elevation.
     install_scope: InstallScope = .current_user,
+    /// Default shortcut choices shown on the finish page.
     shortcuts: Shortcuts = .{},
+    /// Launch the application after installation.
     launch_app: bool = true,
 
-    pub const InstallScope = enum { current_user, all_users };
+    pub const InstallScope = enum {
+        /// Install under `%LOCALAPPDATA%\Programs`.
+        current_user,
+        /// Install under `%ProgramFiles%`; requires elevation.
+        all_users,
+    };
 
     pub const Shortcuts = struct {
+        /// Create a Start Menu shortcut.
         start_menu: bool = true,
+        /// Create a desktop shortcut.
         desktop: bool = false,
     };
 };
