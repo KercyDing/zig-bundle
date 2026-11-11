@@ -166,11 +166,15 @@ pub fn project(
             .name = config.name,
             .identifier = config.identifier,
             .version = config.version,
+            .publisher = config.publisher orelse "",
             .scope = switch (options.install_scope) {
                 .current_user => .current_user,
                 .all_users => .all_users,
             },
             .executable_name = config.executable.out_filename,
+            .start_menu = options.shortcuts.start_menu,
+            .desktop = options.shortcuts.desktop,
+            .launch = options.launch_app,
             .payload = payload.entries.items,
             .runtime_path = runtime_path,
         }, arena) catch |err| {

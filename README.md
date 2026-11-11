@@ -87,6 +87,21 @@ For Linux targets, enable the Debian package:
 },
 ```
 
+Windows installer options:
+
+```zig
+.setup_exe = .{
+    .install_scope = .current_user,
+    .shortcuts = .{ .start_menu = true, .desktop = true },
+    .launch_app = true,
+},
+```
+
+The runtime supports `--silent`, `--dir <path>`, and `--uninstall`. It installs to
+`%LOCALAPPDATA%\Programs\<name>` (current user) or `%ProgramFiles%\<name>`
+(all users, requires elevation), creates shortcuts, registers an uninstall entry,
+and copies `uninstall.exe` into the install directory.
+
 Run:
 
 ```bash

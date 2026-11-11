@@ -72,8 +72,15 @@ pub const DebOptions = struct {
 
 pub const SetupExeOptions = struct {
     install_scope: InstallScope = .current_user,
+    shortcuts: Shortcuts = .{},
+    launch_app: bool = true,
 
     pub const InstallScope = enum { current_user, all_users };
+
+    pub const Shortcuts = struct {
+        start_menu: bool = true,
+        desktop: bool = false,
+    };
 };
 
 /// Validated, normalized settings owned by a `BundleStep`.

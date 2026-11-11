@@ -16,11 +16,19 @@ pub const Config = struct {
     name: []const u8,
     identifier: []const u8,
     version: []const u8,
+    publisher: []const u8 = "",
     scope: Scope,
     executable_name: []const u8,
+    start_menu: bool = true,
+    desktop: bool = false,
+    launch: bool = true,
     payload: []const resources.Entry,
     runtime_path: []const u8,
 };
+
+fn manifestValue(value: []const u8) []const u8 {
+    return if (std.mem.indexOfAny(u8, value, "\r\n") == null) value else "";
+}
 
 /// Layout: runtime | manifest | tar.gz payload | footer.
 pub fn bundle(
@@ -57,8 +65,12 @@ pub fn bundle(
     try manifest_writer.print("name={s}\n", .{config.name});
     try manifest_writer.print("identifier={s}\n", .{config.identifier});
     try manifest_writer.print("version={s}\n", .{config.version});
+    try manifest_writer.print("publisher={s}\n", .{manifestValue(config.publisher)});
     try manifest_writer.print("scope={s}\n", .{@tagName(config.scope)});
     try manifest_writer.print("exe={s}\n", .{config.executable_name});
+    try manifest_writer.print("start_menu={d}\n", .{@intFromBool(config.start_menu)});
+    try manifest_writer.print("desktop={d}\n", .{@intFromBool(config.desktop)});
+    try manifest_writer.print("launch={d}\n", .{@intFromBool(config.launch)});
 
     var out_buffer: [16 * 1024]u8 = undefined;
     var out = file.writer(io, &out_buffer);

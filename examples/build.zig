@@ -22,7 +22,9 @@ pub fn build(b: *std.Build) void {
         .zip => .{ .zip = .{} },
         .tar_gz => .{ .tar_gz = .{} },
         .deb => .{ .deb = .{} },
-        .setup_exe => .{ .setup_exe = .{} },
+        .setup_exe => .{ .setup_exe = .{
+            .shortcuts = .{ .start_menu = true, .desktop = true },
+        } },
     };
 
     b.installArtifact(exe);
