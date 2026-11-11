@@ -28,6 +28,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
+    run_cmd.setCwd(b.path("."));
     run_cmd.step.dependOn(b.getInstallStep());
     b.step("run", "Run the example application").dependOn(&run_cmd.step);
 
@@ -42,7 +43,7 @@ pub fn build(b: *std.Build) void {
         .input = .{
             .executable = exe,
             .icons = .{
-                .png = &.{b.path("assets/icons")},
+                .png = &.{b.path("icons")},
             },
             .resources = &.{
                 .{ .source = b.path("assets") },
