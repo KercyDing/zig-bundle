@@ -129,3 +129,18 @@ test "sanitizePath rejects escaping paths" {
     try std.testing.expectError(error.InvalidPath, sanitizePath(allocator, "/absolute"));
     try std.testing.expectError(error.InvalidPath, sanitizePath(allocator, ""));
 }
+
+test "sanitizePath rejects empty components" {
+    const allocator = std.testing.allocator;
+
+    try std.testing.expectError(error.InvalidPath, sanitizePath(allocator, "a//b"));
+    try std.testing.expectError(error.InvalidPath, sanitizePath(allocator, "a/./b"));
+}
+
+test "sanitizePath trims separators" {
+    const allocator = std.testing.allocator;
+
+    const path = try sanitizePath(allocator, "assets/nested/");
+    defer allocator.free(path);
+    try std.testing.expectEqualStrings("assets/nested", path);
+}

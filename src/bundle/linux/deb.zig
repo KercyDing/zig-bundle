@@ -355,3 +355,31 @@ test "debian architecture" {
     try std.testing.expectEqualStrings("i386", try archName(.x86));
     try std.testing.expectError(error.UnsupportedArchitecture, archName(.wasm32));
 }
+
+test "kebab case collapses separators" {
+    const allocator = std.testing.allocator;
+
+    const name = try toKebabCase(allocator, "My--App__v2");
+    defer allocator.free(name);
+    try std.testing.expectEqualStrings("my-app-v2", name);
+}
+
+test "kebab case rejects empty" {
+    try std.testing.expectError(error.InvalidPackageName, toKebabCase(std.testing.allocator, "__"));
+}
+
+test "maintainer fallback" {
+    const config: Config = .{
+        .name = "App",
+        .identifier = "com.example.app",
+        .version = "1.0.0",
+        .executable_name = "app",
+        .payload = &.{},
+    };
+
+    try std.testing.expectEqualStrings("example", maintainer(config));
+
+    var with_publisher = config;
+    with_publisher.publisher = "Acme";
+    try std.testing.expectEqualStrings("Acme", maintainer(with_publisher));
+}

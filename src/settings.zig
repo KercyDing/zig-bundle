@@ -270,3 +270,21 @@ test "deb options have metadata defaults" {
     try std.testing.expectEqualStrings("utils", options.section.?);
     try std.testing.expectEqualStrings("optional", options.priority.?);
 }
+
+test "format matches capabilities" {
+    inline for (std.meta.fields(Format)) |field| {
+        try std.testing.expect(@hasField(capabilities.Format, field.name));
+    }
+    inline for (std.meta.fields(capabilities.Format)) |field| {
+        try std.testing.expect(@hasField(Format, field.name));
+    }
+}
+
+test "setup exe defaults" {
+    const options: SetupExeOptions = .{};
+
+    try std.testing.expectEqual(SetupExeOptions.InstallScope.current_user, options.install_scope);
+    try std.testing.expect(options.shortcuts.start_menu);
+    try std.testing.expect(!options.shortcuts.desktop);
+    try std.testing.expect(options.launch_app);
+}

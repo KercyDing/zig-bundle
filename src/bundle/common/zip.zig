@@ -272,3 +272,8 @@ fn levelOptions(level: u4) flate.Compress.Options {
         else => .level_9,
     };
 }
+
+test "compression level clamps" {
+    try std.testing.expectEqual(std.compress.flate.Compress.Options.level_1, levelOptions(0));
+    try std.testing.expectEqual(std.compress.flate.Compress.Options.level_9, levelOptions(15));
+}
