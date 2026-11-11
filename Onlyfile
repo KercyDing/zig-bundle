@@ -1,28 +1,9 @@
 !version 0.5
 
-[help] Build in debug mode
-[pass] Debug build complete.
-[fail] Debug build failed.
-build():
-    zig build
-
-[help] Run in debug mode
-[fail] Debug run failed.
-run():
-    zig build run
-
-[help] Build in release mode
-[desc] Run `only build-release false` to turn off the strip.
-[pass] Release build complete.
-[fail] Release build failed.
-build-release(strip = "true"):
-    zig build -Doptimize=ReleaseFast -Dstrip={{strip}}
-
-[help] Run in release mode
-[desc] Run `only run-release false` to turn off the strip.
-[fail] Release run failed.
-run-release(strip = "true"):
-    zig build run -Doptimize=ReleaseFast -Dstrip={{strip}}
+[help] Run unit tests
+[fail] Tests failed.
+test():
+    zig build test
 
 [help] Format all Zig files
 [pass] Formatting complete.
@@ -33,4 +14,21 @@ fmt():
 [pass] Clean complete.
 [fail] Clean failed.
 clean():
-    rm -rf .zig-cache zig-out zig-pkg
+    rm -rf .zig-cache zig-out
+
+    | cd examples
+    | rm -rf .zig-cache zig-out
+
+[help] Example application
+group example {
+
+    [help] Package the example application
+    [fail] Example package failed.
+    package():
+        cd examples && zig build package
+
+    [help] Package the example application in ReleaseFast with stripped symbols
+    [fail] Example release package failed.
+    release():
+        cd examples && zig build package -Doptimize=ReleaseFast -Dstrip=true
+}
