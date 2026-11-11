@@ -15,9 +15,12 @@ reimplemented in Zig and designed around `std.Build`.
 | --- | --- |
 | `zip` | `<prefix>/bundle/zip/<name>-<version>-<arch>-<os>.zip` |
 | `tar_gz` | `<prefix>/bundle/tar.gz/<name>-<version>-<arch>-<os>.tar.gz` |
+| `deb` | `<prefix>/bundle/deb/<name>_<version>_<deb-arch>.deb` |
 
 Archives contain the executable and configured resources at the archive root.
 Timestamps are fixed so repeated builds produce identical archives.
+`deb` requires a Linux target and is generated natively without external tools.
+Format/host/target compatibility is validated while configuring the bundle, before any build steps run.
 
 ## Usage
 
@@ -51,9 +54,12 @@ pub fn build(b: *std.Build) void {
             .name = "MyApp",
             .identifier = "com.example.myapp",
             .version = "1.0.0",
+            .publisher = "Example <example@example.com>",
+            .description = "My example application",
         },
         .input = .{
             .executable = exe,
+            .icon = b.path("assets/icon.png"),
             .resources = &.{
                 .{ .source = b.path("assets") },
                 .{ .source = b.path("README.md"), .dest = "docs/README.md" },
@@ -67,6 +73,15 @@ pub fn build(b: *std.Build) void {
 
     b.step("package", "Package application").dependOn(&bundled.step);
 }
+```
+
+For Linux targets, enable the Debian package:
+
+```zig
+.formats = .{
+    .tar_gz = .{},
+    .deb = .{},
+},
 ```
 
 Run:
@@ -86,8 +101,10 @@ zig build test
 With [Only](https://github.com/KercyDing/only):
 
 ```bash
-only build
 only test
 only fmt
 only clean
+only example zip
+only example targz
+only example deb
 ```
