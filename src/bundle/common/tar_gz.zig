@@ -76,9 +76,19 @@ pub fn writeItems(
 ) !void {
     var file_buffer: [16 * 1024]u8 = undefined;
     var writer = file.writer(io, &file_buffer);
+    try writeItemsTo(io, &writer.interface, items, level);
+    try writer.interface.flush();
+}
 
+/// Writes a tar.gz into an existing writer, without flushing it.
+pub fn writeItemsTo(
+    io: Io,
+    writer: *Io.Writer,
+    items: []const Item,
+    level: u4,
+) !void {
     var history: [flate.max_window_len]u8 = undefined;
-    var compressor = try flate.Compress.init(&writer.interface, &history, .gzip, levelOptions(level));
+    var compressor = try flate.Compress.init(writer, &history, .gzip, levelOptions(level));
 
     var tar_writer: std.tar.Writer = .{ .underlying_writer = &compressor.writer };
 
@@ -109,7 +119,6 @@ pub fn writeItems(
 
     try tar_writer.finishPedantically();
     try compressor.finish();
-    try writer.interface.flush();
 }
 
 fn levelOptions(level: u4) flate.Compress.Options {
