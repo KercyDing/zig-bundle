@@ -34,6 +34,9 @@ pub fn add(b: *std.Build, options: Options) *BundleStep {
     for (self.settings.resources) |resource| {
         resource.source.addStepDependencies(&self.step);
     }
+    if (self.settings.icon) |icon| {
+        icon.addStepDependencies(&self.step);
+    }
 
     return self;
 }

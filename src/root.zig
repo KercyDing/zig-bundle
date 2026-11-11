@@ -10,6 +10,8 @@
 //! ```
 
 const bundle = @import("bundle.zig");
+const capabilities = @import("capabilities.zig");
+const deb = @import("bundle/linux/deb.zig");
 const resources = @import("bundle/common/resources.zig");
 const settings = @import("settings.zig");
 const step = @import("step.zig");
@@ -18,6 +20,7 @@ const zip = @import("bundle/common/zip.zig");
 
 pub const App = settings.App;
 pub const Compression = settings.Compression;
+pub const DebOptions = settings.DebOptions;
 pub const Formats = settings.Formats;
 pub const Input = settings.Input;
 pub const Options = settings.Options;
@@ -31,6 +34,8 @@ test {
     const std = @import("std");
 
     std.testing.refAllDecls(bundle);
+    std.testing.refAllDecls(capabilities);
+    std.testing.refAllDecls(deb);
     std.testing.refAllDecls(resources);
     std.testing.refAllDecls(settings);
     std.testing.refAllDecls(step);

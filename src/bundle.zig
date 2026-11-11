@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const deb = @import("bundle/linux/deb.zig");
 const resources = @import("bundle/common/resources.zig");
 const settings = @import("settings.zig");
 const tar_gz = @import("bundle/common/tar_gz.zig");
@@ -25,6 +26,13 @@ pub fn project(
         @tagName(target.result.cpu.arch),
         @tagName(target.result.os.tag),
     });
+
+    const deb_arch: ?[]const u8 = if (config.deb != null)
+        deb.archName(target.result.cpu.arch) catch {
+            return step.fail("unsupported architecture for deb: {s}", .{@tagName(target.result.cpu.arch)});
+        }
+    else
+        null;
 
     var payload: resources.Payload = .{};
     defer payload.deinit(arena);
@@ -95,6 +103,44 @@ pub fn project(
         try artifacts.append(b.allocator, b.dupe(path));
     }
 
+    if (config.deb) |options| {
+        const dir = try std.fs.path.join(arena, &.{ output_root, "deb" });
+        try Io.Dir.cwd().createDirPath(io, dir);
+
+        const package_basename = try std.fmt.allocPrint(arena, "{s}_{s}_{s}", .{
+            config.name,
+            config.version,
+            deb_arch.?,
+        });
+        const file_name = try std.fmt.allocPrint(arena, "{s}.deb", .{package_basename});
+        const path = try std.fs.path.join(arena, &.{ dir, file_name });
+
+        var file = try createOutputFile(io, path);
+        defer file.close(io);
+
+        const icon_path = if (config.icon) |icon| try resolveLazyPath(b, step, icon, arena) else null;
+
+        deb.bundle(io, file, .{
+            .name = config.name,
+            .identifier = config.identifier,
+            .version = config.version,
+            .publisher = config.publisher,
+            .description = config.description,
+            .executable_name = config.executable.out_filename,
+            .payload = payload.entries.items,
+            .icon_path = icon_path,
+            .options = .{
+                .depends = options.depends,
+                .section = options.section,
+                .priority = options.priority,
+            },
+        }, deb_arch.?, dir, package_basename, arena) catch |err| {
+            return step.fail("failed to create '{s}': {t}", .{ path, err });
+        };
+
+        try artifacts.append(b.allocator, b.dupe(path));
+    }
+
     if (artifacts.items.len == 0) {
         return step.fail("no bundle formats were configured", .{});
     }
@@ -145,9 +191,7 @@ fn artifactPath(
 }
 
 fn createOutputFile(io: Io, path: []const u8) !Io.File {
-    Io.Dir.cwd().deleteFile(io, path) catch |err| switch (err) {
-        error.FileNotFound => {},
-        else => return err,
-    };
+    // Truncate instead of delete+create: on Windows, deleting a freshly written
+    // artifact can fail while a scanner still holds the file open.
     return Io.Dir.cwd().createFile(io, path, .{ .truncate = true });
 }

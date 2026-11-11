@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const capabilities = @import("capabilities.zig");
+
 /// Configuration accepted by `bundle.add`.
 pub const Options = struct {
     app: App,
@@ -15,11 +17,17 @@ pub const App = struct {
     identifier: []const u8,
     /// Semantic version, e.g. `"1.2.3"`.
     version: []const u8,
+    /// Package maintainer. Falls back to the identifier.
+    publisher: ?[]const u8 = null,
+    /// Short description used by package metadata.
+    description: ?[]const u8 = null,
 };
 
 pub const Input = struct {
     /// Executable produced by the build.
     executable: *std.Build.Step.Compile,
+    /// Application icon, used by formats that support it.
+    icon: ?std.Build.LazyPath = null,
     /// Additional files or directories copied into the bundle.
     resources: []const Resource = &.{},
 };
@@ -37,6 +45,7 @@ pub const Resource = struct {
 pub const Formats = struct {
     zip: ?ZipOptions = null,
     tar_gz: ?TarGzOptions = null,
+    deb: ?DebOptions = null,
 };
 
 pub const Compression = enum { store, deflate };
@@ -52,18 +61,30 @@ pub const TarGzOptions = struct {
     level: u4 = 6,
 };
 
+pub const DebOptions = struct {
+    /// Debian package dependencies, e.g. `"libc6 (>= 2.31)"`.
+    depends: []const []const u8 = &.{},
+    section: ?[]const u8 = null,
+    /// Defaults to `"optional"`.
+    priority: ?[]const u8 = null,
+};
+
 /// Validated, normalized settings owned by a `BundleStep`.
 pub const Settings = struct {
     name: []const u8,
     identifier: []const u8,
     version: []const u8,
+    publisher: ?[]const u8,
+    description: ?[]const u8,
     executable: *std.Build.Step.Compile,
     /// Must be obtained via `getEmittedBin()` during configuration; the compile
     /// step only fills in the generated path if it was requested before it ran.
     executable_path: std.Build.LazyPath,
+    icon: ?std.Build.LazyPath,
     resources: []const Resource,
     zip: ?ZipOptions,
     tar_gz: ?TarGzOptions,
+    deb: ?DebOptions,
 
     pub fn init(b: *std.Build, options: Options) Settings {
         const app = options.app;
@@ -83,9 +104,15 @@ pub const Settings = struct {
             std.process.fatal("zig-bundle: invalid app version '{s}'", .{app.version});
         };
 
-        if (options.formats.zip == null and options.formats.tar_gz == null) {
+        if (options.formats.zip == null and options.formats.tar_gz == null and options.formats.deb == null) {
             std.process.fatal("zig-bundle: at least one output format must be enabled", .{});
         }
+
+        const target = (options.input.executable.root_module.resolved_target orelse b.graph.host).result;
+        const host = b.graph.host.result;
+        if (options.formats.zip != null) validateFormat(.zip, host, target);
+        if (options.formats.tar_gz != null) validateFormat(.tar_gz, host, target);
+        if (options.formats.deb != null) validateFormat(.deb, host, target);
 
         const resources = b.allocator.alloc(Resource, options.input.resources.len) catch @panic("OOM");
         for (options.input.resources, resources) |resource, *dest| {
@@ -95,15 +122,51 @@ pub const Settings = struct {
             };
         }
 
+        const deb = if (options.formats.deb) |deb_options| blk: {
+            const depends = b.allocator.alloc([]const u8, deb_options.depends.len) catch @panic("OOM");
+            for (deb_options.depends, depends) |dependency, *dest| {
+                dest.* = b.dupe(dependency);
+            }
+            break :blk DebOptions{
+                .depends = depends,
+                .section = if (deb_options.section) |section| b.dupe(section) else null,
+                .priority = if (deb_options.priority) |priority| b.dupe(priority) else null,
+            };
+        } else null;
+
         return .{
             .name = b.dupe(app.name),
             .identifier = b.dupe(app.identifier),
             .version = b.dupe(app.version),
+            .publisher = if (app.publisher) |publisher| b.dupe(publisher) else null,
+            .description = if (app.description) |description| b.dupe(description) else null,
             .executable = options.input.executable,
             .executable_path = options.input.executable.getEmittedBin(),
+            .icon = options.input.icon,
             .resources = resources,
             .zip = options.formats.zip,
             .tar_gz = options.formats.tar_gz,
+            .deb = deb,
         };
     }
 };
+
+fn validateFormat(format: capabilities.Format, host: std.Target, target: std.Target) void {
+    capabilities.check(format, host.os.tag, host.cpu.arch, target.os.tag, target.cpu.arch) catch |err| switch (err) {
+        error.UnsupportedHost => std.process.fatal(
+            "zig-bundle: format '{s}' requires a {s} host (host is {s})",
+            .{ @tagName(format), capabilities.hostName(capabilities.spec(format).hosts), @tagName(host.os.tag) },
+        ),
+        error.UnsupportedTarget => {
+            const required = capabilities.spec(format).target_os.?;
+            std.process.fatal(
+                "zig-bundle: format '{s}' requires a {s} target (target is {s}-{s})",
+                .{ @tagName(format), @tagName(required), @tagName(target.cpu.arch), @tagName(target.os.tag) },
+            );
+        },
+        error.ArchMismatch => std.process.fatal(
+            "zig-bundle: format '{s}' requires matching host and target architectures (host is {s}, target is {s})",
+            .{ @tagName(format), @tagName(host.cpu.arch), @tagName(target.cpu.arch) },
+        ),
+    };
+}
