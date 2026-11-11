@@ -62,7 +62,10 @@ pub fn build(b: *std.Build) void {
         },
         .input = .{
             .executable = exe,
-            .icon = b.path("assets/icon.png"),
+            .icons = .{
+                // Files or directories; directories are scanned for *.png.
+                .png = &.{ b.path("icons") },
+            },
             .resources = &.{
                 .{ .source = b.path("assets") },
                 .{ .source = b.path("README.md"), .dest = "docs/README.md" },

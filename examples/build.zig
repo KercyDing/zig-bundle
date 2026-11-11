@@ -43,7 +43,9 @@ pub fn build(b: *std.Build) void {
         },
         .input = .{
             .executable = exe,
-            .icon = b.path("assets/icon.png"),
+            .icons = .{
+                .png = &.{b.path("assets/icons")},
+            },
             .resources = &.{
                 .{ .source = b.path("assets") },
             },

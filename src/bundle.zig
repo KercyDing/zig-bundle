@@ -2,6 +2,7 @@ const std = @import("std");
 
 const capabilities = @import("capabilities.zig");
 const deb = @import("bundle/linux/deb.zig");
+const icons = @import("bundle/common/icons.zig");
 const resources = @import("bundle/common/resources.zig");
 const settings = @import("settings.zig");
 const setup_exe = @import("bundle/windows/setup_exe.zig");
@@ -74,6 +75,50 @@ pub fn project(
         }
     }
 
+    var png_icons: std.ArrayList(icons.Png) = .empty;
+    for (config.icons.png) |lazy_path| {
+        const path = try resolveLazyPath(b, step, lazy_path, arena);
+        const stat = Io.Dir.cwd().statFile(io, path, .{}) catch |err| {
+            return step.fail("cannot read icon source '{s}': {t}", .{ path, err });
+        };
+
+        switch (stat.kind) {
+            .file => try addIconPng(io, arena, path, &png_icons, step),
+            .directory => {
+                var dir = Io.Dir.openDirAbsolute(io, path, .{ .iterate = true }) catch |err| {
+                    return step.fail("cannot read icon directory '{s}': {t}", .{ path, err });
+                };
+                defer dir.close(io);
+
+                var found = false;
+                var iterator = dir.iterate();
+                while (try iterator.next(io)) |entry| {
+                    if (entry.kind != .file) continue;
+                    if (!std.ascii.eqlIgnoreCase(std.fs.path.extension(entry.name), ".png")) continue;
+
+                    const child = try std.fs.path.join(arena, &.{ path, entry.name });
+                    try addIconPng(io, arena, child, &png_icons, step);
+                    found = true;
+                }
+
+                if (!found) {
+                    return step.fail("no PNG icons found in '{s}'", .{path});
+                }
+            },
+            else => return step.fail("icon source '{s}' is not a file or directory", .{path}),
+        }
+    }
+
+    const ico_path: ?[]const u8 = if (config.icons.ico) |lazy_path|
+        try resolveLazyPath(b, step, lazy_path, arena)
+    else
+        null;
+    if (ico_path) |path| {
+        _ = Io.Dir.cwd().statFile(io, path, .{}) catch |err| {
+            return step.fail("cannot read icon '{s}': {t}", .{ path, err });
+        };
+    }
+
     var artifacts: std.ArrayList([]const u8) = .empty;
     errdefer artifacts.deinit(b.allocator);
 
@@ -122,8 +167,6 @@ pub fn project(
         var file = try createOutputFile(io, path);
         defer file.close(io);
 
-        const icon_path = if (config.icon) |icon| try resolveLazyPath(b, step, icon, arena) else null;
-
         deb.bundle(io, file, .{
             .name = config.name,
             .identifier = config.identifier,
@@ -132,7 +175,7 @@ pub fn project(
             .description = config.description,
             .executable_name = config.executable.out_filename,
             .payload = payload.entries.items,
-            .icon_path = icon_path,
+            .icons = png_icons.items,
             .options = .{
                 .depends = options.depends,
                 .section = options.section,
@@ -162,6 +205,27 @@ pub fn project(
         var file = try createOutputFile(io, path);
         defer file.close(io);
 
+        var setup_icon_path: ?[]const u8 = ico_path;
+        var generated_icon_path: ?[]const u8 = null;
+        const icon_name: ?[]const u8 = if (ico_path != null or png_icons.items.len > 0)
+            try std.fmt.allocPrint(arena, "{s}.ico", .{config.name})
+        else
+            null;
+
+        if (setup_icon_path == null and png_icons.items.len > 0) {
+            const generated = try std.fmt.allocPrint(arena, "{s}.generated.ico", .{config.name});
+            setup_icon_path = try std.fs.path.join(arena, &.{ dir, generated });
+            generated_icon_path = setup_icon_path;
+            {
+                var icon_file = try Io.Dir.cwd().createFile(io, setup_icon_path.?, .{ .truncate = true });
+                defer icon_file.close(io);
+                icons.writeIco(io, icon_file, png_icons.items, arena) catch |err| {
+                    return step.fail("cannot build Windows icon: {t}", .{err});
+                };
+            }
+        }
+        defer if (generated_icon_path) |generated_path| Io.Dir.cwd().deleteFile(io, generated_path) catch {};
+
         setup_exe.bundle(io, file, .{
             .name = config.name,
             .identifier = config.identifier,
@@ -177,6 +241,8 @@ pub fn project(
             .launch = options.launch_app,
             .payload = payload.entries.items,
             .runtime_path = runtime_path,
+            .icon_path = setup_icon_path,
+            .icon_name = icon_name,
         }, arena) catch |err| {
             return step.fail("failed to create '{s}': {t}", .{ path, err });
         };
@@ -198,6 +264,23 @@ pub fn project(
     }
 
     return artifacts.toOwnedSlice(b.allocator);
+}
+
+fn addIconPng(
+    io: Io,
+    allocator: std.mem.Allocator,
+    path: []const u8,
+    list: *std.ArrayList(icons.Png),
+    step: *std.Build.Step,
+) !void {
+    const info = icons.readPng(io, path) catch |err| {
+        return step.fail("invalid icon '{s}': {t}", .{ path, err });
+    };
+
+    for (list.items) |existing| {
+        if (existing.width == info.width and existing.height == info.height) return;
+    }
+    try list.append(allocator, info);
 }
 
 fn resolveLazyPath(

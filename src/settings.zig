@@ -23,11 +23,20 @@ pub const App = struct {
     description: ?[]const u8 = null,
 };
 
+pub const Icons = struct {
+    /// PNG sources: files or directories scanned for `*.png`. Dimensions are
+    /// read from each PNG header; Linux packages install them by size, and
+    /// Windows packs them into an `.ico` when no dedicated ICO is provided.
+    png: []const std.Build.LazyPath = &.{},
+    /// Optional Windows icon used as-is.
+    ico: ?std.Build.LazyPath = null,
+};
+
 pub const Input = struct {
     /// Executable produced by the build.
     executable: *std.Build.Step.Compile,
-    /// Application icon, used by formats that support it.
-    icon: ?std.Build.LazyPath = null,
+    /// Application icons used by formats that support them.
+    icons: Icons = .{},
     /// Additional files or directories copied into the bundle.
     resources: []const Resource = &.{},
 };
@@ -94,7 +103,7 @@ pub const Settings = struct {
     /// Must be obtained via `getEmittedBin()` during configuration; the compile
     /// step only fills in the generated path if it was requested before it ran.
     executable_path: std.Build.LazyPath,
-    icon: ?std.Build.LazyPath,
+    icons: Icons,
     resources: []const Resource,
     zip: ?ZipOptions,
     tar_gz: ?TarGzOptions,
@@ -169,7 +178,14 @@ pub const Settings = struct {
             .description = if (app.description) |description| b.dupe(description) else null,
             .executable = options.input.executable,
             .executable_path = options.input.executable.getEmittedBin(),
-            .icon = options.input.icon,
+            .icons = .{
+                .png = blk: {
+                    const png = b.allocator.alloc(std.Build.LazyPath, options.input.icons.png.len) catch @panic("OOM");
+                    for (options.input.icons.png, png) |source, *dest| dest.* = source;
+                    break :blk png;
+                },
+                .ico = options.input.icons.ico,
+            },
             .resources = resources,
             .zip = options.formats.zip,
             .tar_gz = options.formats.tar_gz,

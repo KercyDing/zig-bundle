@@ -24,6 +24,8 @@ pub const Config = struct {
     launch: bool = true,
     payload: []const resources.Entry,
     runtime_path: []const u8,
+    icon_path: ?[]const u8 = null,
+    icon_name: ?[]const u8 = null,
 };
 
 fn manifestValue(value: []const u8) []const u8 {
@@ -39,6 +41,15 @@ pub fn bundle(
 ) !void {
     var items: std.ArrayList(tar_gz.Item) = .empty;
     defer items.deinit(allocator);
+
+    if (config.icon_path) |icon_path| {
+        try items.append(allocator, .{
+            .path = config.icon_name orelse "icon.ico",
+            .kind = .file,
+            .mode = 0o644,
+            .content = .{ .file = icon_path },
+        });
+    }
 
     for (config.payload) |entry| switch (entry.kind) {
         .dir => try items.append(allocator, .{
@@ -71,6 +82,7 @@ pub fn bundle(
     try manifest_writer.print("start_menu={d}\n", .{@intFromBool(config.start_menu)});
     try manifest_writer.print("desktop={d}\n", .{@intFromBool(config.desktop)});
     try manifest_writer.print("launch={d}\n", .{@intFromBool(config.launch)});
+    try manifest_writer.print("icon={s}\n", .{config.icon_name orelse ""});
 
     var out_buffer: [16 * 1024]u8 = undefined;
     var out = file.writer(io, &out_buffer);

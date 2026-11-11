@@ -59,6 +59,7 @@ const Manifest = struct {
     launch: bool,
     payload_offset: u64,
     payload_size: u64,
+    icon: []const u8,
 };
 
 const IShellLinkW = extern struct {
@@ -220,7 +221,7 @@ pub fn main(init: std.process.Init) !void {
         };
 
         if (finish.desktop_shortcut) {
-            createDesktopShortcut(init, arena, manifest, installed.install_path, installed.target_exe) catch |err| {
+            createDesktopShortcut(init, arena, manifest, installed.install_path, installed.target_exe, installed.icon_path) catch |err| {
                 gui.showError(arena, "Shortcut failed", @errorName(err));
             };
         } else {
@@ -274,6 +275,7 @@ fn readManifest(allocator: std.mem.Allocator, io: Io, executable_path: []const u
         .launch = manifestBool(bytes, "launch", true),
         .payload_offset = payload_offset,
         .payload_size = payload_size,
+        .icon = manifestValue(bytes, "icon") orelse "",
     };
 }
 
@@ -310,6 +312,7 @@ fn chooseInstallDir(
 const Installed = struct {
     install_path: []const u8,
     target_exe: []const u8,
+    icon_path: []const u8,
 };
 
 fn installApp(
@@ -331,16 +334,24 @@ fn installApp(
 
     const target_exe = try std.fs.path.join(allocator, &.{ install_path, manifest.executable_name });
     const uninstall_path = try std.fs.path.join(allocator, &.{ install_path, "uninstall.exe" });
+    const icon_path = if (manifest.icon.len > 0)
+        try std.fs.path.join(allocator, &.{ install_path, manifest.icon })
+    else
+        target_exe;
 
     try copyFile(io, executable_path, uninstall_path);
 
     if (manifest.start_menu or manifest.desktop) {
-        try createShortcuts(init, allocator, manifest, install_path, target_exe, !defer_desktop);
+        try createShortcuts(init, allocator, manifest, install_path, target_exe, icon_path, !defer_desktop);
     }
 
-    try writeUninstallRegistry(allocator, manifest, install_path, target_exe, uninstall_path);
+    try writeUninstallRegistry(allocator, manifest, install_path, icon_path, uninstall_path);
 
-    return .{ .install_path = install_path, .target_exe = target_exe };
+    return .{
+        .install_path = install_path,
+        .target_exe = target_exe,
+        .icon_path = icon_path,
+    };
 }
 
 fn uninstallApp(
@@ -443,16 +454,17 @@ fn createShortcuts(
     manifest: Manifest,
     install_dir: []const u8,
     target_exe: []const u8,
+    icon_path: []const u8,
     include_desktop: bool,
 ) !void {
     if (manifest.start_menu) {
         const link_path = try shortcutPath(init, allocator, manifest, .start_menu);
         try ensureParent(init.io, link_path);
-        try createShortcut(allocator, link_path, target_exe, install_dir, manifest.name);
+        try createShortcut(allocator, link_path, target_exe, icon_path, install_dir, manifest.name);
     }
 
     if (include_desktop and manifest.desktop) {
-        try createDesktopShortcut(init, allocator, manifest, install_dir, target_exe);
+        try createDesktopShortcut(init, allocator, manifest, install_dir, target_exe, icon_path);
     }
 }
 
@@ -462,10 +474,11 @@ fn createDesktopShortcut(
     manifest: Manifest,
     install_dir: []const u8,
     target_exe: []const u8,
+    icon_path: []const u8,
 ) !void {
     const link_path = try shortcutPath(init, allocator, manifest, .desktop);
     try ensureParent(init.io, link_path);
-    try createShortcut(allocator, link_path, target_exe, install_dir, manifest.name);
+    try createShortcut(allocator, link_path, target_exe, icon_path, install_dir, manifest.name);
 }
 
 fn removeDesktopShortcut(
@@ -535,6 +548,7 @@ fn createShortcut(
     allocator: std.mem.Allocator,
     link_path: []const u8,
     target: []const u8,
+    icon: []const u8,
     working_dir: []const u8,
     description: []const u8,
 ) !void {
@@ -554,6 +568,7 @@ fn createShortcut(
     defer _ = link.?.vtable.Release(link.?);
 
     const target_w = try std.unicode.wtf8ToWtf16LeAllocZ(allocator, target);
+    const icon_w = try std.unicode.wtf8ToWtf16LeAllocZ(allocator, icon);
     const working_w = try std.unicode.wtf8ToWtf16LeAllocZ(allocator, working_dir);
     const description_w = try std.unicode.wtf8ToWtf16LeAllocZ(allocator, description);
     const link_w = try std.unicode.wtf8ToWtf16LeAllocZ(allocator, link_path);
@@ -561,7 +576,7 @@ fn createShortcut(
     if (link.?.vtable.SetPath(link.?, target_w.ptr) < 0) return error.ComFailed;
     if (link.?.vtable.SetWorkingDirectory(link.?, working_w.ptr) < 0) return error.ComFailed;
     if (link.?.vtable.SetDescription(link.?, description_w.ptr) < 0) return error.ComFailed;
-    if (link.?.vtable.SetIconLocation(link.?, target_w.ptr, 0) < 0) return error.ComFailed;
+    if (link.?.vtable.SetIconLocation(link.?, icon_w.ptr, 0) < 0) return error.ComFailed;
 
     var persist: ?*IPersistFile = null;
     if (link.?.vtable.QueryInterface(link.?, &iid_persist_file, @ptrCast(&persist)) < 0 or persist == null) {
@@ -576,7 +591,7 @@ fn writeUninstallRegistry(
     allocator: std.mem.Allocator,
     manifest: Manifest,
     install_dir: []const u8,
-    target_exe: []const u8,
+    icon_path: []const u8,
     uninstall_path: []const u8,
 ) !void {
     const root = switch (manifest.scope) {
@@ -603,7 +618,7 @@ fn writeUninstallRegistry(
         try setRegistryString(allocator, key, "Publisher", manifest.publisher);
     }
     try setRegistryString(allocator, key, "InstallLocation", install_dir);
-    try setRegistryString(allocator, key, "DisplayIcon", target_exe);
+    try setRegistryString(allocator, key, "DisplayIcon", icon_path);
 
     const uninstall_command = try std.fmt.allocPrint(allocator, "\"{s}\" --uninstall", .{uninstall_path});
     try setRegistryString(allocator, key, "UninstallString", uninstall_command);

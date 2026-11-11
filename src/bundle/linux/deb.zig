@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const icons = @import("../common/icons.zig");
 const resources = @import("../common/resources.zig");
 const tar_gz = @import("../common/tar_gz.zig");
 
@@ -19,7 +20,7 @@ pub const Config = struct {
     description: ?[]const u8 = null,
     executable_name: []const u8,
     payload: []const resources.Entry,
-    icon_path: ?[]const u8 = null,
+    icons: []const icons.Png = &.{},
     options: Options = .{},
 };
 
@@ -68,23 +69,21 @@ pub fn bundle(
         }
     }
 
-    const icon_info = if (config.icon_path) |icon_path| try readPngSize(io, icon_path) else null;
-    if (config.icon_path) |icon_path| {
-        const info = icon_info.?;
+    for (config.icons) |icon| {
         const path = try std.fmt.allocPrint(allocator, "usr/share/icons/hicolor/{d}x{d}/apps/{s}.png", .{
-            info.width,
-            info.height,
+            icon.width,
+            icon.height,
             config.executable_name,
         });
         try data_items.append(allocator, .{
             .path = path,
             .kind = .file,
             .mode = 0o644,
-            .content = .{ .file = icon_path },
+            .content = .{ .file = icon.path },
         });
     }
 
-    const desktop = try renderDesktop(allocator, config, icon_info != null);
+    const desktop = try renderDesktop(allocator, config, config.icons.len > 0);
     try data_items.append(allocator, .{
         .path = try std.fmt.allocPrint(allocator, "usr/share/applications/{s}.desktop", .{config.name}),
         .kind = .file,
@@ -143,23 +142,6 @@ pub fn bundle(
     }
 
     try writeArchive(io, file, control_path, data_path);
-}
-
-fn readPngSize(io: Io, path: []const u8) !struct { width: u32, height: u32 } {
-    var file = try Io.Dir.cwd().openFile(io, path, .{});
-    defer file.close(io);
-
-    var header: [24]u8 = undefined;
-    if (try file.readPositionalAll(io, &header, 0) != header.len) return error.InvalidIcon;
-
-    const signature = [_]u8{ 0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n' };
-    if (!std.mem.eql(u8, header[0..8], &signature)) return error.InvalidIcon;
-    if (!std.mem.eql(u8, header[12..16], "IHDR")) return error.InvalidIcon;
-
-    const width = std.mem.readInt(u32, header[16..20], .big);
-    const height = std.mem.readInt(u32, header[20..24], .big);
-    if (width == 0 or height == 0) return error.InvalidIcon;
-    return .{ .width = width, .height = height };
 }
 
 fn md5Bytes(bytes: []const u8) [16]u8 {
