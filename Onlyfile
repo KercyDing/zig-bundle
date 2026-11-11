@@ -22,13 +22,18 @@ clean():
 [help] Example application
 group example {
 
-    [help] Package the example application
-    [fail] Example package failed.
-    package():
-        cd examples && zig build package
+    [help] Package the example application as a ZIP
+    [fail] Example ZIP package failed.
+    zip():
+        cd examples && zig build package -Dformat=zip
 
-    [help] Package the example application in ReleaseFast with stripped symbols
-    [fail] Example release package failed.
-    release():
-        cd examples && zig build package -Doptimize=ReleaseFast -Dstrip=true
+    [help] Package the example application as a tar.gz
+    [fail] Example tar.gz package failed.
+    targz():
+        cd examples && zig build package -Dformat=targz
+
+    [help] Package the example application for Linux as a DEB
+    [fail] Example DEB package failed.
+    deb():
+        cd examples && zig build package -Dformat=deb -Dtarget=x86_64-linux-gnu
 }
