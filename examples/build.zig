@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const zig_bundle = @import("zig_bundle");
+const bundle = @import("bundle");
 
 const Format = enum { zip, targz, deb };
 
@@ -18,7 +18,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    const formats: zig_bundle.Formats = switch (format) {
+    const formats: bundle.Formats = switch (format) {
         .zip => .{ .zip = .{} },
         .targz => .{ .tar_gz = .{} },
         .deb => .{ .deb = .{} },
@@ -26,7 +26,7 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(exe);
 
-    const bundled = zig_bundle.add(b, .{
+    const bundled = bundle.add(b, .{
         .app = .{
             .name = "HelloBundle",
             .identifier = "com.example.hellobundle",
