@@ -1,12 +1,12 @@
 //! Cross-platform application bundling for `build.zig`.
 //!
 //! ```zig
-//! const bundled = @import("zig_bundle").add(b, .{
+//! const bundled = @import("bundle").add(b, .{
 //!     .app = .{ .name = "MyApp", .identifier = "com.example.myapp", .version = "1.0.0" },
 //!     .input = .{ .executable = exe },
 //!     .formats = .{ .zip = .{} },
 //! });
-//! b.step("package", "Package application").dependOn(&bundled.step);
+//! b.step("bundle", "Bundle application").dependOn(&bundled.step);
 //! ```
 
 const bundle = @import("bundle.zig");

@@ -4,7 +4,7 @@ const std = @import("std");
 const root = @import("src/root.zig");
 
 // This file is imported directly by consumer build scripts via
-// `@import("zig_bundle")`, so it re-exports the public configuration API.
+// `@import("bundle")`, so it re-exports the public configuration API.
 pub const add = root.add;
 
 pub const App = root.App;

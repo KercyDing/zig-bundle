@@ -53,5 +53,5 @@ pub fn build(b: *std.Build) void {
         .formats = formats,
     });
 
-    b.step("package", "Package the application").dependOn(&bundled.step);
+    b.step("bundle", "Bundle the application").dependOn(&bundled.step);
 }

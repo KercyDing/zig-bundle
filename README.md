@@ -77,7 +77,7 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    b.step("package", "Package application").dependOn(&bundled.step);
+    b.step("bundle", "Bundle application").dependOn(&bundled.step);
 }
 ```
 
@@ -110,7 +110,7 @@ and copies `uninstall.exe` into the install directory.
 Run:
 
 ```bash
-zig build package
+zig build bundle
 ```
 
 A complete example lives in [`examples/`](examples).

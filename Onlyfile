@@ -29,20 +29,20 @@ group example {
     [help] Package the example application as a ZIP
     [fail] Example ZIP package failed.
     zip():
-        cd examples && zig build package -Dformat=zip
+        cd examples && zig build bundle -Dformat=zip
 
     [help] Package the example application as a tar.gz
     [fail] Example tar.gz package failed.
     tar_gz():
-        cd examples && zig build package -Dformat=tar_gz
+        cd examples && zig build bundle -Dformat=tar_gz
 
     [help] Package the example application for Linux as a DEB
     [fail] Example DEB package failed.
     deb():
-        cd examples && zig build package -Dformat=deb -Dtarget=x86_64-linux-gnu
+        cd examples && zig build bundle -Dformat=deb -Dtarget=x86_64-linux-gnu
 
     [help] Package the example application as a Windows Setup.exe
     [fail] Example Setup.exe package failed.
     setup_exe():
-        cd examples && zig build package -Dformat=setup_exe -Dtarget=x86_64-windows-gnu
+        cd examples && zig build bundle -Dformat=setup_exe -Dtarget=x86_64-windows-gnu
 }
