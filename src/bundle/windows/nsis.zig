@@ -75,8 +75,6 @@ pub fn bundle(
             tool,
             "-INPUTCHARSET",
             "UTF8",
-            "-OUTPUTCHARSET",
-            "UTF8",
             "-V3",
             "installer.nsi",
         },
@@ -128,7 +126,10 @@ fn renderScript(allocator: std.mem.Allocator, config: Config, icon_name: []const
     );
     const uninstall_key_escaped = try escape(allocator, uninstall_key);
 
-    try writer.writeAll("Unicode true\n!include \"MUI2.nsh\"\n\n");
+    try writer.writeAll("Unicode true\n!include \"MUI2.nsh\"\n!include \"nsDialogs.nsh\"\n\n");
+    try writer.print("!define START_MENU_DEFAULT {d}\n", .{@intFromBool(config.start_menu)});
+    try writer.print("!define DESKTOP_DEFAULT {d}\n", .{@intFromBool(config.desktop)});
+    try writer.writeAll("Var StartMenuCheckbox\nVar DesktopCheckbox\n");
     try writer.writeAll("!define MUI_ABORTWARNING\n");
     try writer.writeAll("!insertmacro MUI_PAGE_WELCOME\n");
     try writer.writeAll("!insertmacro MUI_PAGE_DIRECTORY\n");
@@ -138,6 +139,8 @@ fn renderScript(allocator: std.mem.Allocator, config: Config, icon_name: []const
         try writeEscaped(writer, config.executable_name);
         try writer.writeAll("\"\n");
     }
+    try writer.writeAll("!define MUI_PAGE_CUSTOMFUNCTION_SHOW FinishPageShow\n");
+    try writer.writeAll("!define MUI_PAGE_CUSTOMFUNCTION_LEAVE FinishPageLeave\n");
     try writer.writeAll("!insertmacro MUI_PAGE_FINISH\n");
     try writer.writeAll("!insertmacro MUI_UNPAGE_CONFIRM\n");
     try writer.writeAll("!insertmacro MUI_UNPAGE_INSTFILES\n");
@@ -155,6 +158,8 @@ fn renderScript(allocator: std.mem.Allocator, config: Config, icon_name: []const
     try writer.writeAll(" \"");
     try writeEscaped(writer, uninstall_key);
     try writer.writeAll("\" \"InstallLocation\"\n");
+    // NSIS is DPI-unaware by default, so Windows bitmap-scales the UI.
+    try writer.writeAll("ManifestDPIAware true\n");
     try writer.print("RequestExecutionLevel {s}\n", .{execution_level});
     if (config.icon_path != null) {
         try writer.writeAll("Icon \"icon.ico\"\nUninstallIcon \"icon.ico\"\n");
@@ -220,7 +225,54 @@ fn renderScript(allocator: std.mem.Allocator, config: Config, icon_name: []const
     try writeEscaped(writer, config.name);
     try writer.writeAll(".lnk\"\n  Delete \"$INSTDIR\\uninstall.exe\"\n  RMDir /r \"$INSTDIR\"\n");
     try writer.print("  DeleteRegKey {s} \"{s}\"\n", .{ root, uninstall_key_escaped });
-    try writer.writeAll("SectionEnd\n");
+    try writer.writeAll("SectionEnd\n\n");
+
+    const shortcut_icon = if (config.icon_path != null) icon_name else config.executable_name;
+
+    try writer.writeAll(
+        "Function FinishPageShow\n" ++
+            "  ${NSD_CreateCheckbox} 120u 105u 195u 10u \"Create a Start Menu shortcut\"\n" ++
+            "  Pop $StartMenuCheckbox\n" ++
+            "  SetCtlColors $StartMenuCheckbox \"${MUI_TEXTCOLOR}\" \"${MUI_BGCOLOR}\"\n" ++
+            "  SendMessage $StartMenuCheckbox 0x00F1 ${START_MENU_DEFAULT} 0\n" ++
+            "  ${NSD_CreateCheckbox} 120u 120u 195u 10u \"Create a desktop shortcut\"\n" ++
+            "  Pop $DesktopCheckbox\n" ++
+            "  SetCtlColors $DesktopCheckbox \"${MUI_TEXTCOLOR}\" \"${MUI_BGCOLOR}\"\n" ++
+            "  SendMessage $DesktopCheckbox 0x00F1 ${DESKTOP_DEFAULT} 0\n" ++
+            "FunctionEnd\n\n" ++
+            "Function FinishPageLeave\n" ++
+            "  SendMessage $StartMenuCheckbox 0x00F0 0 0 $0\n" ++
+            "  StrCmp $0 \"1\" zb_start_menu_create zb_start_menu_remove\n" ++
+            "zb_start_menu_create:\n" ++
+            "  CreateShortCut \"$SMPROGRAMS\\",
+    );
+    try writeEscaped(writer, config.name);
+    try writer.writeAll(".lnk\" \"$INSTDIR\\");
+    try writeEscaped(writer, config.executable_name);
+    try writer.writeAll("\" \"\" \"$INSTDIR\\");
+    try writeEscaped(writer, shortcut_icon);
+    try writer.writeAll("\" 0\n  Goto zb_start_menu_done\n" ++
+        "zb_start_menu_remove:\n" ++
+        "  Delete \"$SMPROGRAMS\\");
+    try writeEscaped(writer, config.name);
+    try writer.writeAll(".lnk\"\n" ++
+        "zb_start_menu_done:\n" ++
+        "  SendMessage $DesktopCheckbox 0x00F0 0 0 $0\n" ++
+        "  StrCmp $0 \"1\" zb_desktop_create zb_desktop_remove\n" ++
+        "zb_desktop_create:\n" ++
+        "  CreateShortCut \"$DESKTOP\\");
+    try writeEscaped(writer, config.name);
+    try writer.writeAll(".lnk\" \"$INSTDIR\\");
+    try writeEscaped(writer, config.executable_name);
+    try writer.writeAll("\" \"\" \"$INSTDIR\\");
+    try writeEscaped(writer, shortcut_icon);
+    try writer.writeAll("\" 0\n  Goto zb_desktop_done\n" ++
+        "zb_desktop_remove:\n" ++
+        "  Delete \"$DESKTOP\\");
+    try writeEscaped(writer, config.name);
+    try writer.writeAll(".lnk\"\n" ++
+        "zb_desktop_done:\n" ++
+        "FunctionEnd\n\n");
 
     return allocating.toOwnedSlice();
 }
@@ -306,4 +358,42 @@ test "nsis script keeps expansion variables" {
 
     try std.testing.expect(std.mem.indexOf(u8, script, "InstallDir \"$LOCALAPPDATA\\Programs\\App\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, script, "$$LOCALAPPDATA") == null);
+}
+
+test "nsis script enables dpi awareness" {
+    const config: Config = .{
+        .name = "App",
+        .identifier = "com.example.app",
+        .version = "1.0.0",
+        .scope = .current_user,
+        .arch = "x86_64",
+        .executable_name = "app.exe",
+        .payload = &.{},
+    };
+
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+
+    const script = try renderScript(arena_state.allocator(), config, "app.ico", "/tmp/App-setup.exe");
+    try std.testing.expect(std.mem.indexOf(u8, script, "ManifestDPIAware true") != null);
+}
+
+test "nsis finish page offers shortcut choices" {
+    const config: Config = .{
+        .name = "App",
+        .identifier = "com.example.app",
+        .version = "1.0.0",
+        .scope = .current_user,
+        .arch = "x86_64",
+        .executable_name = "app.exe",
+        .payload = &.{},
+    };
+
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+
+    const script = try renderScript(arena_state.allocator(), config, "app.ico", "/tmp/App-setup.exe");
+    try std.testing.expect(std.mem.indexOf(u8, script, "MUI_PAGE_CUSTOMFUNCTION_SHOW FinishPageShow") != null);
+    try std.testing.expect(std.mem.indexOf(u8, script, "Create a Start Menu shortcut") != null);
+    try std.testing.expect(std.mem.indexOf(u8, script, "Create a desktop shortcut") != null);
 }
