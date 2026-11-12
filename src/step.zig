@@ -70,6 +70,11 @@ pub fn add(b: *std.Build, options: Options, comptime build_zig: type) *BundleSte
     if (self.settings.icons.ico) |icon| {
         icon.addStepDependencies(&self.step);
     }
+    if (self.settings.app_bundle != null or self.settings.dmg != null) {
+        if (self.settings.icons.icns) |icon| {
+            icon.addStepDependencies(&self.step);
+        }
+    }
     if (self.settings.rpm) |rpm| {
         for (rpm.assets) |asset| asset.source.addStepDependencies(&self.step);
         if (rpm.maintainer_scripts) |scripts| scripts.addStepDependencies(&self.step);

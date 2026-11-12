@@ -91,6 +91,8 @@ pub fn build(b: *std.Build) void {
             .icons = .{
                 // Files or directories; directories are scanned for *.png.
                 .png = &.{ b.path("icons") },
+                // Optional macOS icon; used as-is instead of generating one.
+                // .icns = b.path("icons/icon.icns"),
             },
             .resources = &.{
                 .{ .source = b.path("assets") },
@@ -203,9 +205,10 @@ setting `APPIMAGE_EXTRACT_AND_RUN=1` for the child process.
 
 macOS app bundles put the executable in `Contents/MacOS` and resources in
 `Contents/Resources`. `Info.plist`, `PkgInfo`, and `icon.icns` are generated
-natively; ICNS is built from the configured square PNG icons without
-`iconutil` or `sips`, so include 512x512 and 1024x1024 sources for complete
-icon coverage. DMGs contain the `.app` and an `/Applications` symlink and are
+natively; when `icons.icns` is set it is copied as-is, otherwise ICNS is built
+from the configured square PNG icons without `iconutil` or `sips`, so include
+512x512 and 1024x1024 sources for complete icon coverage. Other formats ignore
+`icons.icns`. DMGs contain the `.app` and an `/Applications` symlink and are
 written as UDZO images by `hdiutil`.
 
 Set top-level `.enable_llvm_strip = true` to strip the bundled executable with

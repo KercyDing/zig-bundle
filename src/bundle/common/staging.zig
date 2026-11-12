@@ -11,6 +11,7 @@ pub const Staged = struct {
     payload: resources.Payload,
     png_icons: []icons.Png,
     ico_path: ?[]const u8,
+    icns_path: ?[]const u8,
 };
 
 /// Resolves the executable, resources, and icons into a payload.
@@ -104,10 +105,22 @@ pub fn prepare(
         };
     }
 
+    const uses_macos_icons = config.app_bundle != null or config.dmg != null;
+    const icns_path: ?[]const u8 = if (uses_macos_icons and config.icons.icns != null)
+        try resolveLazyPath(b, step, config.icons.icns.?, arena)
+    else
+        null;
+    if (icns_path) |path| {
+        _ = Io.Dir.cwd().statFile(io, path, .{}) catch |err| {
+            return step.fail("cannot read icon '{s}': {t}", .{ path, err });
+        };
+    }
+
     return .{
         .payload = payload,
         .png_icons = try png_icons.toOwnedSlice(arena),
         .ico_path = ico_path,
+        .icns_path = icns_path,
     };
 }
 

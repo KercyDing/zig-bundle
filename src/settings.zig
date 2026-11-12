@@ -43,11 +43,15 @@ pub const App = struct {
 /// Application icon sources.
 pub const Icons = struct {
     /// PNG sources: files or directories scanned for `*.png`. Dimensions are
-    /// read from each PNG header; Linux packages install them by size, and
-    /// Windows packs them into an `.ico` when no dedicated ICO is provided.
+    /// read from each PNG header; Linux packages install them by size, Windows
+    /// packs them into an `.ico` when no dedicated ICO is provided, and macOS
+    /// builds an ICNS from the square sources.
     png: []const std.Build.LazyPath = &.{},
     /// Optional Windows icon used as-is.
     ico: ?std.Build.LazyPath = null,
+    /// Optional macOS icon used as-is instead of generating an ICNS from PNGs.
+    /// Only read when a macOS format (`app` or `dmg`) is enabled.
+    icns: ?std.Build.LazyPath = null,
 };
 
 /// Executable and additional files to bundle.
@@ -495,6 +499,7 @@ pub const Settings = struct {
                     break :blk png;
                 },
                 .ico = options.input.icons.ico,
+                .icns = options.input.icons.icns,
             },
             .resources = resources,
             .zip = options.formats.zip,

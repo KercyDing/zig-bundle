@@ -63,6 +63,7 @@ pub fn project(
     const payload = staged.payload;
     const png_icons = staged.png_icons;
     const ico_path = staged.ico_path;
+    const icns_path = staged.icns_path;
 
     var artifacts: std.ArrayList([]const u8) = .empty;
     errdefer artifacts.deinit(b.allocator);
@@ -301,9 +302,10 @@ pub fn project(
             .executable_name = config.executable.out_filename,
             .payload = payload.entries.items,
             .icons = png_icons,
+            .icns_path = icns_path,
         }, arena) catch |err| switch (err) {
             error.MissingIcon => return step.fail(
-                "macOS app requires at least one square PNG icon",
+                "macOS app requires an ICNS or at least one square PNG icon",
                 .{},
             ),
             else => return step.fail("failed to create '{s}': {t}", .{ app_dir, err }),
@@ -328,6 +330,7 @@ pub fn project(
             .executable_name = config.executable.out_filename,
             .payload = payload.entries.items,
             .icons = png_icons,
+            .icns_path = icns_path,
         }, dir, path, arena) catch |err| switch (err) {
             error.HdiutilNotFound => return step.fail(
                 "hdiutil not found; dmg packaging requires a macOS host",

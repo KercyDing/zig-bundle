@@ -14,6 +14,7 @@ pub const Config = struct {
     executable_name: []const u8,
     payload: []const resources.Entry,
     icons: []const icons.Png = &.{},
+    icns_path: ?[]const u8 = null,
 };
 
 /// Stages the `.app` with an `/Applications` symlink and writes a UDZO image.
@@ -43,6 +44,7 @@ pub fn bundle(
         .executable_name = config.executable_name,
         .payload = config.payload,
         .icons = config.icons,
+        .icns_path = config.icns_path,
     }, allocator);
     try Io.Dir.cwd().symLink(io, "/Applications", applications, .{ .is_directory = true });
 

@@ -14,6 +14,8 @@ pub const Config = struct {
     executable_name: []const u8,
     payload: []const resources.Entry,
     icons: []const icons.Png = &.{},
+    /// ICNS file copied as-is; takes precedence over generated icons.
+    icns_path: ?[]const u8 = null,
 };
 
 /// Writes a complete `.app` directory at `app_dir`.
@@ -38,22 +40,26 @@ pub fn bundle(io: Io, app_dir: []const u8, config: Config, allocator: std.mem.Al
         }
     }
 
-    const has_icon = icons.hasIcnsSource(config.icons);
-    if (!has_icon and config.icons.len > 0) return error.MissingIcon;
-
-    if (has_icon) {
-        const icon_path = try std.fs.path.join(allocator, &.{ resources_dir, "icon.icns" });
-        var icon_file = try Io.Dir.cwd().createFile(io, icon_path, .{ .truncate = true });
-        defer icon_file.close(io);
-        try icons.writeIcns(io, icon_file, config.icons);
-    }
+    const icon_file: ?[]const u8 = if (config.icns_path) |icns_path| blk: {
+        const dest = try std.fs.path.join(allocator, &.{ resources_dir, "icon.icns" });
+        try files.copyFile(io, icns_path, dest, false);
+        break :blk "icon.icns";
+    } else if (icons.hasIcnsSource(config.icons)) blk: {
+        const dest = try std.fs.path.join(allocator, &.{ resources_dir, "icon.icns" });
+        var file = try Io.Dir.cwd().createFile(io, dest, .{ .truncate = true });
+        defer file.close(io);
+        try icons.writeIcns(io, file, config.icons);
+        break :blk "icon.icns";
+    } else if (config.icons.len > 0) {
+        return error.MissingIcon;
+    } else null;
 
     const plist = try renderInfoPlist(allocator, .{
         .name = config.name,
         .identifier = config.identifier,
         .version = config.version,
         .executable_name = config.executable_name,
-        .icon_file = if (has_icon) "icon.icns" else null,
+        .icon_file = icon_file,
     });
     try files.writeBytes(io, try std.fs.path.join(allocator, &.{ contents, "Info.plist" }), plist, false);
     try files.writeBytes(io, try std.fs.path.join(allocator, &.{ contents, "PkgInfo" }), "APPL????", false);
@@ -115,6 +121,42 @@ fn writeXmlEscaped(writer: *Io.Writer, value: []const u8) !void {
         0x00...0x08, 0x0B, 0x0C, 0x0E...0x1F => {},
         else => try writer.writeByte(c),
     };
+}
+
+test "provided icns is copied verbatim" {
+    const io = std.testing.io;
+
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const allocator = arena_state.allocator();
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(io, .{ .sub_path = "custom.icns", .data = "custom icon" });
+
+    const icns_path = try tmp.dir.realPathFileAlloc(io, "custom.icns", allocator);
+
+    var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const path_len = try tmp.dir.realPath(io, &path_buffer);
+    const app_dir = try std.fs.path.join(allocator, &.{ path_buffer[0..path_len], "Test.app" });
+
+    try bundle(io, app_dir, .{
+        .name = "Test",
+        .identifier = "com.example.test",
+        .version = "1.0.0",
+        .executable_name = "test",
+        .payload = &.{},
+        .icns_path = icns_path,
+    }, allocator);
+
+    const copied_path = try std.fs.path.join(allocator, &.{ app_dir, "Contents", "Resources", "icon.icns" });
+    const copied = try Io.Dir.cwd().readFileAlloc(io, copied_path, allocator, .limited(1024));
+    try std.testing.expectEqualStrings("custom icon", copied);
+
+    const plist_path = try std.fs.path.join(allocator, &.{ app_dir, "Contents", "Info.plist" });
+    const plist = try Io.Dir.cwd().readFileAlloc(io, plist_path, allocator, .limited(16 * 1024));
+    try std.testing.expect(std.mem.indexOf(u8, plist, "<string>icon.icns</string>") != null);
 }
 
 test "info plist escapes values" {

@@ -61,6 +61,8 @@ pub fn build(b: *std.Build) void {
             .executable = exe,
             .icons = .{
                 .png = &.{b.path("icons")},
+                // macOS prefers this; other formats ignore it.
+                .icns = b.path("icons/icon.icns"),
             },
             .resources = &.{
                 .{ .source = b.path("assets") },
