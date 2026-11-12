@@ -7,6 +7,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const format = b.option(bundle.Format, "format", "Bundle format") orelse .zip;
     const app_version = b.option([]const u8, "app-version", "Application version") orelse "0.1.0";
+    const install_scope = b.option(bundle.NsisOptions.InstallScope, "scope", "NSIS install scope") orelse .current_user;
 
     const exe = b.addExecutable(.{
         .name = "hello-bundle",
@@ -31,6 +32,7 @@ pub fn build(b: *std.Build) void {
             },
         } },
         .nsis => .{ .nsis = .{
+            .install_scope = install_scope,
             .shortcuts = .{ .start_menu = true, .desktop = true },
         } },
     };

@@ -92,6 +92,15 @@ jobs:
         shell: pwsh
         run: ./scripts/windows-installer-test.ps1
 
+      - name: Build all-users installer
+        working-directory: examples
+        shell: pwsh
+        run: zig build bundle -Dformat=nsis -Dtarget=x86_64-windows-gnu '-Dapp-version=0.2.0' -Dscope=all_users
+
+      - name: Run all-users installer test
+        shell: pwsh
+        run: ./scripts/windows-installer-allusers-test.ps1
+
   cross:
     name: cross (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

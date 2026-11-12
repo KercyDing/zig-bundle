@@ -12,6 +12,7 @@ pub const Config = struct {
     identifier: []const u8,
     version: []const u8,
     publisher: []const u8 = "",
+    copyright: []const u8 = "",
     scope: Scope,
     arch: []const u8,
     executable_name: []const u8,
@@ -150,7 +151,9 @@ fn renderScript(allocator: std.mem.Allocator, config: Config, icon_name: []const
     try writeEscaped(writer, config.name);
     try writer.writeAll("\"\nOutFile \"");
     try writeEscaped(writer, output_path);
-    try writer.writeAll("\"\nInstallDir \"");
+    try writer.writeAll("\"\nBrandingText \"");
+    try writeEscaped(writer, config.name);
+    try writer.writeAll(" Setup\"\nInstallDir \"");
     try writer.writeAll(default_dir_prefix);
     try writeEscaped(writer, config.name);
     try writer.writeAll("\"\nInstallDirRegKey ");
@@ -161,6 +164,29 @@ fn renderScript(allocator: std.mem.Allocator, config: Config, icon_name: []const
     // NSIS is DPI-unaware by default, so Windows bitmap-scales the UI.
     try writer.writeAll("ManifestDPIAware true\n");
     try writer.print("RequestExecutionLevel {s}\n", .{execution_level});
+
+    if (versionInfo(allocator, config.version)) |version_info| {
+        try writer.print("VIProductVersion \"{s}\"\n", .{version_info});
+        try writer.writeAll("VIAddVersionKey \"ProductName\" \"");
+        try writeEscaped(writer, config.name);
+        try writer.writeAll("\"\nVIAddVersionKey \"ProductVersion\" \"");
+        try writeEscaped(writer, config.version);
+        try writer.writeAll("\"\nVIAddVersionKey \"FileVersion\" \"");
+        try writeEscaped(writer, config.version);
+        try writer.writeAll("\"\nVIAddVersionKey \"FileDescription\" \"");
+        try writeEscaped(writer, config.name);
+        try writer.writeAll(" Setup\"\n");
+        if (config.publisher.len > 0) {
+            try writer.writeAll("VIAddVersionKey \"CompanyName\" \"");
+            try writeEscaped(writer, config.publisher);
+            try writer.writeAll("\"\n");
+        }
+        if (config.copyright.len > 0) {
+            try writer.writeAll("VIAddVersionKey \"LegalCopyright\" \"");
+            try writeEscaped(writer, config.copyright);
+            try writer.writeAll("\"\n");
+        }
+    }
     if (config.icon_path != null) {
         try writer.writeAll("Icon \"icon.ico\"\nUninstallIcon \"icon.ico\"\n");
     }
@@ -281,6 +307,15 @@ fn renderScript(allocator: std.mem.Allocator, config: Config, icon_name: []const
     return allocating.toOwnedSlice();
 }
 
+fn versionInfo(allocator: std.mem.Allocator, version: []const u8) ?[]const u8 {
+    const parsed = std.SemanticVersion.parse(version) catch return null;
+    return std.fmt.allocPrint(allocator, "{d}.{d}.{d}.0", .{
+        parsed.major,
+        parsed.minor,
+        parsed.patch,
+    }) catch null;
+}
+
 fn escape(allocator: std.mem.Allocator, text: []const u8) ![]const u8 {
     var allocating: std.Io.Writer.Allocating = .init(allocator);
     errdefer allocating.deinit();
@@ -380,6 +415,8 @@ test "nsis script enables dpi awareness" {
 
     const script = try renderScript(arena_state.allocator(), config, "app.ico", "/tmp/App-setup.exe");
     try std.testing.expect(std.mem.indexOf(u8, script, "ManifestDPIAware true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, script, "VIProductVersion \"1.0.0.0\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, script, "BrandingText \"App Setup\"") != null);
 }
 
 test "nsis finish page offers shortcut choices" {

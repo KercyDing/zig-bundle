@@ -325,6 +325,7 @@ pub fn project(
             .identifier = config.identifier,
             .version = config.version,
             .publisher = config.publisher orelse "",
+            .copyright = config.copyright orelse "",
             .scope = switch (options.install_scope) {
                 .current_user => .current_user,
                 .all_users => .all_users,
