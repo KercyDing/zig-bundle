@@ -83,15 +83,25 @@ pub fn bundle(
         .cwd = .{ .path = staging },
         .environ_map = if (child_environment) |*environment| environment else null,
         .stdin = .ignore,
+        .stdout = .pipe,
+        .stderr = .pipe,
     }) catch |err| switch (err) {
         error.FileNotFound => return error.MakensisNotFound,
         else => return err,
     };
 
+    const stdout = readAll(io, child.stdout.?, allocator) catch "";
+    const stderr = readAll(io, child.stderr.?, allocator) catch "";
     const term = try child.wait(io);
     switch (term) {
-        .exited => |code| if (code != 0) return error.MakensisFailed,
-        else => return error.MakensisFailed,
+        .exited => |code| if (code != 0) {
+            std.debug.print("{s}{s}", .{ stdout, stderr });
+            return error.MakensisFailed;
+        },
+        else => {
+            std.debug.print("{s}{s}", .{ stdout, stderr });
+            return error.MakensisFailed;
+        },
     }
 
     _ = Io.Dir.cwd().statFile(io, output_path, .{}) catch return error.MakensisFailed;
@@ -421,4 +431,10 @@ test "nsis finish page offers shortcut choices" {
     try std.testing.expect(std.mem.indexOf(u8, script, "Create a Start Menu shortcut") != null);
     try std.testing.expect(std.mem.indexOf(u8, script, "Create a desktop shortcut") != null);
     try std.testing.expect(std.mem.indexOf(u8, script, "IfSilent zb_shortcuts_create zb_shortcuts_done") != null);
+}
+
+fn readAll(io: Io, file: Io.File, allocator: std.mem.Allocator) ![]u8 {
+    var buffer: [4096]u8 = undefined;
+    var reader = file.reader(io, &buffer);
+    return reader.interface.allocRemaining(allocator, .limited(1024 * 1024));
 }

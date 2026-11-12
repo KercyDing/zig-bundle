@@ -50,11 +50,12 @@ pub fn bundle(
 
     var child = std.process.spawn(io, .{
         .argv = &.{
-            "hdiutil",    "create",
-            "-volname",   config.name,
-            "-srcfolder", stage,
-            "-ov",        "-format",
-            "UDZO",       output_path,
+            "hdiutil",   "create",
+            "-quiet",    "-volname",
+            config.name, "-srcfolder",
+            stage,       "-ov",
+            "-format",   "UDZO",
+            output_path,
         },
         .stdin = .ignore,
     }) catch |err| switch (err) {
