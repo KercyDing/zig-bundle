@@ -1,30 +1,30 @@
-//! Example GUI application built with nanoui.
+//! Example application that reads bundled resources.
 const std = @import("std");
 
-const nanoui = @import("nanoui");
-const ui = nanoui.ui;
-
-const Counter = struct {
-    count: i64 = 0,
-
-    fn view(self: *Counter, c: *ui.Context) void {
-        const col = ui.div(c).column().sizeFull().center().gap(16);
-        defer col.end();
-
-        ui.text(c, "Hello from zig-bundle", .{ .size = 28, .weight = .bold });
-        ui.textf(c, .{ .size = 56, .weight = .bold }, "{d}", .{self.count});
-        if (ui.button(c, "Increment", .{ .variant = .primary }).clicked) self.count += 1;
-    }
-};
-
 pub fn main(init: std.process.Init) !void {
-    const app = try nanoui.App.create(init, .{ .name = "HelloBundle" });
-    defer app.destroy();
+    const allocator = init.arena.allocator();
 
-    var state: Counter = .{};
-    _ = try app.newWindow(.{
-        .title = "HelloBundle",
-        .content = .{ .view = .init(&state, Counter.view) },
-    });
-    try app.run();
+    std.debug.print("Hello from bundled app!\n", .{});
+    try printResource(init.io, allocator, "assets/data.txt");
+    try printResource(init.io, allocator, "assets/nested/config.json");
+
+    if (std.Io.Dir.cwd().readFileAlloc(init.io, "assets/test.png", allocator, .limited(1024 * 1024))) |icon| {
+        std.debug.print("assets/test.png: {d} bytes\n", .{icon.len});
+    } else |_| {
+        std.debug.print("assets/test.png: not found\n", .{});
+    }
+
+    std.debug.print("Press Enter to exit...", .{});
+    var input_buffer: [128]u8 = undefined;
+    var stdin_reader = std.Io.File.stdin().reader(init.io, &input_buffer);
+    _ = stdin_reader.interface.takeDelimiterInclusive('\n') catch {};
+}
+
+fn printResource(io: std.Io, allocator: std.mem.Allocator, path: []const u8) !void {
+    const data = std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(64 * 1024)) catch {
+        std.debug.print("{s}: not found\n", .{path});
+        return;
+    };
+
+    std.debug.print("{s}: {s}\n", .{ path, std.mem.trimEnd(u8, data, "\r\n") });
 }

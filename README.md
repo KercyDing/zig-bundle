@@ -237,7 +237,7 @@ architecture-appropriate `Program Files` (all users, requires elevation),
 registers an uninstall entry, and creates Start Menu/desktop shortcuts. The
 finish page lets the user toggle Start Menu, desktop, and run choices.
 
-A complete example lives in [`examples/`](examples); it is a nanoui GUI app.
+A complete example lives in [`examples/`](examples).
 
 ## Development
 
