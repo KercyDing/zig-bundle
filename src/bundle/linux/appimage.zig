@@ -2,6 +2,7 @@
 const std = @import("std");
 
 const desktop_entry = @import("../common/desktop.zig");
+const files = @import("../common/files.zig");
 const icons = @import("../common/icons.zig");
 const resources = @import("../common/resources.zig");
 
@@ -56,7 +57,7 @@ pub fn bundle(
 
         switch (entry.kind) {
             .dir => try Io.Dir.cwd().createDirPath(io, dest),
-            .file => try copyFile(io, entry.source_path, dest, entry.executable),
+            .file => try files.copyFile(io, entry.source_path, dest, entry.executable),
         }
     }
 
@@ -67,7 +68,7 @@ pub fn bundle(
             icon.height,
             config.executable_name,
         });
-        try copyFile(io, icon.path, dest, false);
+        try files.copyFile(io, icon.path, dest, false);
     }
 
     const root_icon = blk: {
@@ -80,8 +81,8 @@ pub fn bundle(
     };
 
     const root_icon_path = try std.fmt.allocPrint(allocator, "{s}/{s}.png", .{ app_dir, config.executable_name });
-    try copyFile(io, root_icon.path, root_icon_path, false);
-    try copyFile(io, root_icon.path, try std.fmt.allocPrint(allocator, "{s}/.DirIcon", .{app_dir}), false);
+    try files.copyFile(io, root_icon.path, root_icon_path, false);
+    try files.copyFile(io, root_icon.path, try std.fmt.allocPrint(allocator, "{s}/.DirIcon", .{app_dir}), false);
 
     const desktop = try desktop_entry.render(allocator, .{
         .name = config.name,
@@ -91,8 +92,8 @@ pub fn bundle(
         .has_icon = true,
     });
     const desktop_rel = try std.fmt.allocPrint(allocator, "{s}.desktop", .{config.name});
-    try writeBytes(io, try std.fmt.allocPrint(allocator, "{s}/{s}", .{ app_dir, desktop_rel }), desktop, false);
-    try writeBytes(io, try std.fmt.allocPrint(allocator, "{s}/usr/share/applications/{s}", .{ app_dir, desktop_rel }), desktop, false);
+    try files.writeBytes(io, try std.fmt.allocPrint(allocator, "{s}/{s}", .{ app_dir, desktop_rel }), desktop, false);
+    try files.writeBytes(io, try std.fmt.allocPrint(allocator, "{s}/usr/share/applications/{s}", .{ app_dir, desktop_rel }), desktop, false);
 
     const app_run = try std.fmt.allocPrint(allocator,
         \\#!/bin/sh
@@ -100,7 +101,7 @@ pub fn bundle(
         \\exec "$HERE/usr/bin/{s}" "$@"
         \\
     , .{config.executable_name});
-    try writeBytes(io, try std.fmt.allocPrint(allocator, "{s}/AppRun", .{app_dir}), app_run, true);
+    try files.writeBytes(io, try std.fmt.allocPrint(allocator, "{s}/AppRun", .{app_dir}), app_run, true);
 
     Io.Dir.cwd().deleteFile(io, output_path) catch {};
 
@@ -124,29 +125,6 @@ pub fn bundle(
         .exited => |code| if (code != 0) return error.AppImageToolFailed,
         else => return error.AppImageToolFailed,
     }
-}
-
-fn filePermissions(executable: bool) Io.File.Permissions {
-    if (comptime Io.File.Permissions.has_executable_bit) {
-        return Io.File.Permissions.fromMode(if (executable) 0o755 else 0o644);
-    }
-    return if (executable) Io.File.Permissions.executable_file else Io.File.Permissions.default_file;
-}
-
-fn copyFile(io: Io, source: []const u8, dest: []const u8, executable: bool) !void {
-    try Io.Dir.cwd().copyFile(source, Io.Dir.cwd(), dest, io, .{
-        .permissions = filePermissions(executable),
-        .make_path = true,
-    });
-}
-
-fn writeBytes(io: Io, path: []const u8, bytes: []const u8, executable: bool) !void {
-    if (std.fs.path.dirname(path)) |dir| try Io.Dir.cwd().createDirPath(io, dir);
-    try Io.Dir.cwd().writeFile(io, .{
-        .sub_path = path,
-        .data = bytes,
-        .flags = .{ .permissions = filePermissions(executable), .truncate = true },
-    });
 }
 
 fn findTool(

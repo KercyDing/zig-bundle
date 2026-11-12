@@ -1,6 +1,7 @@
 //! Windows setup.exe packaging via the system NSIS `makensis`.
 const std = @import("std");
 
+const files = @import("../common/files.zig");
 const resources = @import("../common/resources.zig");
 
 const Io = std.Io;
@@ -49,18 +50,18 @@ pub fn bundle(
         const dest = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ payload_dir, entry.archive_path });
         switch (entry.kind) {
             .dir => try Io.Dir.cwd().createDirPath(io, dest),
-            .file => try copyFile(io, entry.source_path, dest, entry.executable),
+            .file => try files.copyFile(io, entry.source_path, dest, entry.executable),
         }
     }
 
     const icon_name = config.icon_name orelse "icon.ico";
     if (config.icon_path) |icon_path| {
-        try copyFile(io, icon_path, try std.fmt.allocPrint(allocator, "{s}/{s}", .{ payload_dir, icon_name }), false);
-        try copyFile(io, icon_path, try std.fmt.allocPrint(allocator, "{s}/icon.ico", .{staging}), false);
+        try files.copyFile(io, icon_path, try std.fmt.allocPrint(allocator, "{s}/{s}", .{ payload_dir, icon_name }), false);
+        try files.copyFile(io, icon_path, try std.fmt.allocPrint(allocator, "{s}/icon.ico", .{staging}), false);
     }
 
     const script_path = try std.fmt.allocPrint(allocator, "{s}/installer.nsi", .{staging});
-    try writeBytes(io, script_path, try renderScript(allocator, config, icon_name, output_path), false);
+    try files.writeBytes(io, script_path, try renderScript(allocator, config, icon_name, output_path), false);
 
     Io.Dir.cwd().deleteFile(io, output_path) catch {};
 
@@ -358,29 +359,6 @@ fn findTool(
         return candidate;
     }
     return error.MakensisNotFound;
-}
-
-fn copyFile(io: Io, source: []const u8, dest: []const u8, executable: bool) !void {
-    try Io.Dir.cwd().copyFile(source, Io.Dir.cwd(), dest, io, .{
-        .permissions = filePermissions(executable),
-        .make_path = true,
-    });
-}
-
-fn writeBytes(io: Io, path: []const u8, bytes: []const u8, executable: bool) !void {
-    if (std.fs.path.dirname(path)) |dir| try Io.Dir.cwd().createDirPath(io, dir);
-    try Io.Dir.cwd().writeFile(io, .{
-        .sub_path = path,
-        .data = bytes,
-        .flags = .{ .permissions = filePermissions(executable), .truncate = true },
-    });
-}
-
-fn filePermissions(executable: bool) Io.File.Permissions {
-    if (comptime Io.File.Permissions.has_executable_bit) {
-        return Io.File.Permissions.fromMode(if (executable) 0o755 else 0o644);
-    }
-    return if (executable) Io.File.Permissions.executable_file else Io.File.Permissions.default_file;
 }
 
 test "nsis script keeps expansion variables" {
