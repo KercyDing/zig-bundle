@@ -55,6 +55,8 @@ pub const Config = struct {
     /// Maintainer in `Name <email>` form.
     maintainer: ?[]const u8 = null,
     description: ?[]const u8 = null,
+    /// Semicolon-separated desktop categories.
+    categories: ?[]const u8 = null,
     /// License identifier or short name, written to the copyright file.
     license: ?[]const u8 = null,
     /// Copyright notice line; defaults to `Copyright <year> <maintainer>`.
@@ -70,6 +72,10 @@ pub const Config = struct {
     license_skip_lines: usize = 0,
     /// Additional files installed verbatim.
     assets: []const Asset = &.{},
+    /// Directory containing maintainer scripts.
+    maintainer_scripts_path: ?[]const u8 = null,
+    /// Debian triggers file.
+    triggers_path: ?[]const u8 = null,
     /// Entry timestamp in seconds since the Unix epoch.
     mtime: u64 = tar_gz.default_mtime,
     options: Options = .{},
@@ -207,6 +213,13 @@ pub fn bundle(
     if (conffiles) |bytes| {
         try control_items.append(allocator, .{ .path = "conffiles", .kind = .file, .mode = 0o644, .content = .{ .bytes = bytes } });
     }
+    if (config.maintainer_scripts_path) |dir| {
+        try addMaintainerScripts(io, allocator, dir, &control_items);
+    }
+    if (config.triggers_path) |path| {
+        const bytes = try Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(1024 * 1024));
+        try control_items.append(allocator, .{ .path = "triggers", .kind = .file, .mode = 0o644, .content = .{ .bytes = bytes } });
+    }
 
     const control_path = try std.fmt.allocPrint(allocator, "{s}/{s}.control.tar.gz", .{ output_dir, package_basename });
     const data_path = try std.fmt.allocPrint(allocator, "{s}/{s}.data.tar.gz", .{ output_dir, package_basename });
@@ -300,16 +313,55 @@ fn addAsset(
             else
                 dest;
             if (dest_is_directory) try validateAssetPath(path);
-            try items.append(allocator, .{
-                .path = path,
-                .kind = .file,
-                .mode = asset.mode,
-                .content = .{ .file = source },
-            });
+            try appendAssetFile(io, allocator, source, path, asset.mode, items);
         },
         .directory => try addAssetDirectory(io, allocator, source, dest, asset.mode, items),
         else => return error.UnsupportedAssetType,
     }
+}
+
+fn isManPage(path: []const u8) bool {
+    return std.mem.startsWith(u8, path, "usr/share/man/");
+}
+
+/// Debian requires gzip-compressed man pages; compress uncompressed sources
+/// and add the `.gz` suffix automatically.
+fn appendAssetFile(
+    io: Io,
+    allocator: std.mem.Allocator,
+    source: []const u8,
+    path: []const u8,
+    mode: u32,
+    items: *std.ArrayList(tar_gz.Item),
+) !void {
+    if (isManPage(path) and !std.mem.endsWith(u8, path, ".gz")) {
+        const dest = try std.fmt.allocPrint(allocator, "{s}.gz", .{path});
+        if (std.mem.endsWith(u8, source, ".gz")) {
+            try items.append(allocator, .{
+                .path = dest,
+                .kind = .file,
+                .mode = mode,
+                .content = .{ .file = source },
+            });
+            return;
+        }
+
+        const data = try Io.Dir.cwd().readFileAlloc(io, source, allocator, .limited(16 * 1024 * 1024));
+        try items.append(allocator, .{
+            .path = dest,
+            .kind = .file,
+            .mode = mode,
+            .content = .{ .bytes = try tar_gz.gzipBytes(allocator, data, 9) },
+        });
+        return;
+    }
+
+    try items.append(allocator, .{
+        .path = path,
+        .kind = .file,
+        .mode = mode,
+        .content = .{ .file = source },
+    });
 }
 
 fn addAssetDirectory(
@@ -331,14 +383,45 @@ fn addAssetDirectory(
         const child_dest = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ dest, entry.name });
         switch (entry.kind) {
             .directory => try addAssetDirectory(io, allocator, child_source, child_dest, mode, items),
-            .file => try items.append(allocator, .{
-                .path = child_dest,
-                .kind = .file,
-                .mode = mode,
-                .content = .{ .file = child_source },
-            }),
+            .file => try appendAssetFile(io, allocator, child_source, child_dest, mode, items),
             else => return error.UnsupportedAssetType,
         }
+    }
+}
+
+fn addMaintainerScripts(
+    io: Io,
+    allocator: std.mem.Allocator,
+    dir: []const u8,
+    items: *std.ArrayList(tar_gz.Item),
+) !void {
+    const stat = try Io.Dir.cwd().statFile(io, dir, .{});
+    if (stat.kind != .directory) return error.InvalidMaintainerScripts;
+
+    const scripts = [_]struct { name: []const u8, mode: u32 }{
+        .{ .name = "preinst", .mode = 0o755 },
+        .{ .name = "postinst", .mode = 0o755 },
+        .{ .name = "prerm", .mode = 0o755 },
+        .{ .name = "postrm", .mode = 0o755 },
+        .{ .name = "config", .mode = 0o755 },
+        .{ .name = "templates", .mode = 0o644 },
+    };
+
+    for (scripts) |script| {
+        const path = try std.fs.path.join(allocator, &.{ dir, script.name });
+        const file_stat = Io.Dir.cwd().statFile(io, path, .{}) catch |err| switch (err) {
+            error.FileNotFound => continue,
+            else => return err,
+        };
+        if (file_stat.kind != .file) continue;
+
+        const bytes = try Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(1024 * 1024));
+        try items.append(allocator, .{
+            .path = script.name,
+            .kind = .file,
+            .mode = script.mode,
+            .content = .{ .bytes = bytes },
+        });
     }
 }
 
@@ -656,6 +739,13 @@ fn renderDesktop(allocator: std.mem.Allocator, config: Config, has_icon: bool) !
     }
     try writer.print("StartupWMClass={s}\n", .{config.executable_name});
     if (has_icon) try writer.print("Icon={s}\n", .{config.executable_name});
+    if (config.categories) |categories| {
+        if (categories.len > 0) {
+            try writer.print("Categories={s}", .{categories});
+            if (categories[categories.len - 1] != ';') try writer.writeByte(';');
+            try writer.writeByte('\n');
+        }
+    }
     try writer.print("Name={s}\n", .{config.name});
     try writer.writeAll("Terminal=false\n");
     try writer.writeAll("Type=Application\n");
@@ -859,6 +949,22 @@ test "control relationship fields" {
     try std.testing.expect(std.mem.indexOf(u8, control, "Homepage: https://example.com\n") != null);
     try std.testing.expect(std.mem.indexOf(u8, control, "Depends: libc6\n") != null);
     try std.testing.expect(std.mem.indexOf(u8, control, "Recommends: a, b\n") != null);
+}
+
+test "desktop categories are terminated" {
+    var config = testConfig();
+    config.categories = "Utility;Development";
+
+    const desktop = try renderDesktop(std.testing.allocator, config, false);
+    defer std.testing.allocator.free(desktop);
+
+    try std.testing.expect(std.mem.indexOf(u8, desktop, "Categories=Utility;Development;\n") != null);
+}
+
+test "man pages are detected" {
+    try std.testing.expect(isManPage("usr/share/man/man1/app.1"));
+    try std.testing.expect(isManPage("usr/share/man/fr/man1/app.1"));
+    try std.testing.expect(!isManPage("usr/share/doc/app/manual.txt"));
 }
 
 test "changelog name follows native version" {

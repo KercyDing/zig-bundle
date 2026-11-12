@@ -22,7 +22,7 @@ pub fn build(b: *std.Build) void {
         .deb => .{ .deb = .{
             .homepage = "https://example.com/hello-bundle",
             .assets = &.{
-                .{ .source = b.path("assets/hello-bundle.1.gz"), .dest = "usr/share/man/man1/" },
+                .{ .source = b.path("assets/hello-bundle.1"), .dest = "usr/share/man/man1/" },
                 .{ .source = b.path("assets/nested/config.json"), .dest = "etc/hello-bundle/config.json" },
                 .{ .source = b.path("assets/nested"), .dest = "usr/share/hello-bundle/" },
             },
@@ -47,6 +47,7 @@ pub fn build(b: *std.Build) void {
             .publisher = "Example <example@example.com>",
             .copyright = "Copyright 2026 Example",
             .license = "MIT",
+            .categories = "Utility;",
             .description = "Example application for zig-bundle\n\nDemonstrates every format supported by the library.",
         },
         .input = .{

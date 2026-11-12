@@ -33,6 +33,8 @@ pub const App = struct {
     copyright: ?[]const u8 = null,
     /// License identifier, e.g. `"MIT"`.
     license: ?[]const u8 = null,
+    /// Semicolon-separated desktop categories, e.g. `"Utility;"`.
+    categories: ?[]const u8 = null,
     /// Short description used by package metadata. For Debian, the first line
     /// is the synopsis and the remaining lines form the extended description.
     description: ?[]const u8 = null,
@@ -172,6 +174,11 @@ pub const DebOptions = struct {
     /// Configuration files outside `/etc`; files under `/etc` are detected
     /// automatically.
     conf_files: []const []const u8 = &.{},
+    /// Directory containing `preinst`, `postinst`, `prerm`, `postrm`, `config`
+    /// and `templates`.
+    maintainer_scripts: ?std.Build.LazyPath = null,
+    /// Debian trigger definition installed as `control.tar.gz` `triggers`.
+    triggers: ?std.Build.LazyPath = null,
 };
 
 /// Windows installer options.
@@ -208,6 +215,8 @@ pub const Settings = struct {
     copyright: ?[]const u8,
     /// License identifier shared by package metadata.
     license: ?[]const u8,
+    /// Semicolon-separated desktop categories.
+    categories: ?[]const u8,
     description: ?[]const u8,
     executable: *std.Build.Step.Compile,
     /// Must be obtained via `getEmittedBin()` during configuration; the compile
@@ -329,6 +338,8 @@ pub const Settings = struct {
                 .license_file_skip_lines = deb_options.license_file_skip_lines,
                 .assets = assets,
                 .conf_files = dupeStrings(b, deb_options.conf_files),
+                .maintainer_scripts = deb_options.maintainer_scripts,
+                .triggers = deb_options.triggers,
             };
         } else null;
 
@@ -339,6 +350,7 @@ pub const Settings = struct {
             .publisher = if (app.publisher) |publisher| b.dupe(publisher) else null,
             .copyright = if (app.copyright) |copyright| b.dupe(copyright) else null,
             .license = if (app.license) |license| b.dupe(license) else null,
+            .categories = if (app.categories) |categories| b.dupe(categories) else null,
             .description = if (app.description) |description| b.dupe(description) else null,
             .executable = options.input.executable,
             .executable_path = options.input.executable.getEmittedBin(),

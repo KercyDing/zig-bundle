@@ -72,6 +72,7 @@ pub fn build(b: *std.Build) void {
             .publisher = "Example <example@example.com>",
             .copyright = "Copyright 2026 Example",
             .license = "MIT",
+            .categories = "Utility;",
             .description = "My example application",
         },
         .input = .{
@@ -123,8 +124,8 @@ Debian metadata defaults `maintainer` to `app.publisher`, `copyright` to
     // Installed as changelog.gz.
     .changelog = b.path("debian/changelog"),
     .assets = &.{
-        // Man pages must be gzip-compressed.
-        .{ .source = b.path("assets/myapp.1.gz"), .dest = "usr/share/man/man1/" },
+        // Installed as myapp.1.gz; man pages are compressed automatically.
+        .{ .source = b.path("assets/myapp.1"), .dest = "usr/share/man/man1/" },
         .{ .source = b.path("config.toml"), .dest = "etc/myapp/config.toml" },
     },
 },
@@ -139,7 +140,12 @@ Assets accept files or directories; a trailing `/` means the destination is a
 directory. Files under `etc/` become conffiles automatically, and `conf_files`
 adds paths outside `/etc`. `license_file` is appended to the copyright file;
 `license_file_skip_lines` skips a license header. Pre-compressed `.gz`
-changelogs are installed as-is.
+changelogs are installed as-is. Man page assets under `usr/share/man` are
+gzip-compressed automatically.
+
+`maintainer_scripts` points to a directory containing `preinst`, `postinst`,
+`prerm`, `postrm`, `config`, or `templates`; `triggers` installs a Debian
+triggers file in the control archive.
 
 Archives are reproducible and honor `SOURCE_DATE_EPOCH`; without it, entry
 timestamps default to 1980-01-01.

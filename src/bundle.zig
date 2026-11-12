@@ -106,6 +106,16 @@ pub fn project(
         else
             null;
 
+        const maintainer_scripts_path: ?[]const u8 = if (options.maintainer_scripts) |scripts|
+            try staging.resolveLazyPath(b, step, scripts, arena)
+        else
+            null;
+
+        const triggers_path: ?[]const u8 = if (options.triggers) |triggers|
+            try staging.resolveLazyPath(b, step, triggers, arena)
+        else
+            null;
+
         const deb_assets = try arena.alloc(deb.Asset, options.assets.len);
         for (options.assets, deb_assets) |asset, *dest| {
             dest.* = .{
@@ -125,6 +135,7 @@ pub fn project(
             .maintainer = options.maintainer orelse config.publisher,
             .description = config.description,
             .license = config.license,
+            .categories = config.categories,
             .copyright = options.copyright orelse config.copyright,
             .executable_name = config.executable.out_filename,
             .payload = payload.entries.items,
@@ -133,6 +144,8 @@ pub fn project(
             .license_path = license_path,
             .license_skip_lines = options.license_file_skip_lines,
             .assets = deb_assets,
+            .maintainer_scripts_path = maintainer_scripts_path,
+            .triggers_path = triggers_path,
             .mtime = mtime,
             .options = .{
                 .depends = options.depends,
