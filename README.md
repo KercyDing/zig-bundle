@@ -338,8 +338,29 @@ Extra `Info.plist` keys can be added when needed:
 },
 ```
 
-Signing and notarization are not performed. Use `codesign` and `notarytool`
-separately on a macOS host when distributing the app.
+The bundle is code signed after it has been assembled. Zig links the executable
+with an ad-hoc signature that covers only the Mach-O, so without this step the
+bundle's signature no longer describes `Contents/`: macOS treats the app as
+damaged and TCC refuses to bind Screen Recording or Accessibility grants to it.
+
+`sign` defaults to `.{}`, which signs ad-hoc. Signing requires a macOS host;
+other hosts skip it and print a warning. Use a stable identity when the app
+needs TCC permissions, because those grants are keyed to the signature and an
+ad-hoc identity changes with every build:
+
+```zig
+.app = .{
+    .sign = .{
+        .identity = "Developer ID Application: Example (TEAM123456)",
+        .runtime = true,   // required for notarization
+        .timestamp = true, // Apple-issued identities only
+        .entitlements = b.path("kocr.entitlements"),
+    },
+},
+```
+
+The `dmg` format stages its own copy of the app and takes the same `sign`
+option. Signing is not notarization: run `notarytool` on the finished artifact.
 
 ### macOS DMG
 

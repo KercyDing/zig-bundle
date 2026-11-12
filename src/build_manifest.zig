@@ -143,7 +143,10 @@ pub fn prepare(b: *std.Build, config: *const settings.Settings) !Prepared {
                 },
             };
         }
-        break :blk manifest.App{ .plist_entries = entries };
+        break :blk manifest.App{
+            .plist_entries = entries,
+            .sign = if (options.sign) |sign_options| try signEntry(b.allocator, &paths, sign_options) else null,
+        };
     } else null;
 
     const dmg = if (config.dmg) |options| manifest.Dmg{
@@ -154,6 +157,7 @@ pub fn prepare(b: *std.Build, config: *const settings.Settings) !Prepared {
             .ulfo => .ulfo,
         },
         .applications_link = options.applications_link,
+        .sign = if (options.sign) |sign_options| try signEntry(b.allocator, &paths, sign_options) else null,
         .layout = if (options.layout) |layout| manifest.DmgLayout{
             .background = if (layout.background) |path| try addPath(b.allocator, &paths, path) else null,
             .window_width = layout.window_size.width,
@@ -212,6 +216,19 @@ pub fn prepare(b: *std.Build, config: *const settings.Settings) !Prepared {
             },
         },
         .paths = try paths.toOwnedSlice(b.allocator),
+    };
+}
+
+fn signEntry(
+    allocator: std.mem.Allocator,
+    paths: *std.ArrayList(std.Build.LazyPath),
+    options: settings.SignOptions,
+) !manifest.Sign {
+    return .{
+        .identity = options.identity,
+        .runtime = options.runtime,
+        .timestamp = options.timestamp,
+        .entitlements = if (options.entitlements) |path| try addPath(allocator, paths, path) else null,
     };
 }
 

@@ -1,10 +1,12 @@
 //! Native macOS application bundle layout.
+const builtin = @import("builtin");
 const std = @import("std");
 
 const files = @import("../common/files.zig");
 const icons = @import("../common/icons.zig");
 const manifest = @import("../../manifest.zig");
 const resources = @import("../common/resources.zig");
+const sign = @import("sign.zig");
 
 const Io = std.Io;
 
@@ -19,6 +21,9 @@ pub const Config = struct {
     icns_path: ?[]const u8 = null,
     /// Extra keys appended to `Info.plist`.
     plist_entries: []const manifest.PlistEntry = &.{},
+    /// Signing applied after assembly; `null` keeps the linker's ad-hoc
+    /// signature, which macOS treats as invalid once `Contents/` is populated.
+    sign: ?sign.Config = null,
 };
 
 /// Writes a complete `.app` directory at `app_dir`.
@@ -67,6 +72,8 @@ pub fn bundle(io: Io, app_dir: []const u8, config: Config, allocator: std.mem.Al
     });
     try files.writeBytes(io, try std.Io.Dir.path.join(allocator, &.{ contents, "Info.plist" }), plist, false);
     try files.writeBytes(io, try std.Io.Dir.path.join(allocator, &.{ contents, "PkgInfo" }), "APPL????", false);
+
+    if (config.sign) |signing| try sign.apply(io, app_dir, signing, allocator);
 }
 
 pub const Info = struct {
@@ -229,4 +236,35 @@ test "info plist includes extra entries" {
     try std.testing.expect(std.mem.indexOf(u8, plist, "<key>LSUIElement</key>\n  <true/>") != null);
     try std.testing.expect(std.mem.indexOf(u8, plist, "<key>LSMinimumSystemVersion</key>\n  <string>13.0</string>") != null);
     try std.testing.expect(std.mem.indexOf(u8, plist, "<key>BuildNumber</key>\n  <integer>7</integer>") != null);
+}
+
+test "assembled app is code signed" {
+    if (builtin.os.tag != .macos) return error.SkipZigTest;
+
+    const io = std.testing.io;
+
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const allocator = arena_state.allocator();
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    var path_buffer: [std.Io.Dir.max_path_bytes]u8 = undefined;
+    const path_len = try tmp.dir.realPath(io, &path_buffer);
+    const app_dir = try std.Io.Dir.path.join(allocator, &.{ path_buffer[0..path_len], "Test.app" });
+
+    try bundle(io, app_dir, .{
+        .name = "Test",
+        .identifier = "com.example.test",
+        .version = "1.0.0",
+        .executable_name = "test",
+        .payload = &.{.{
+            .archive_path = "test",
+            .source_path = "/bin/echo",
+            .kind = .file,
+            .executable = true,
+        }},
+        .sign = .{},
+    }, allocator);
 }

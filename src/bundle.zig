@@ -11,6 +11,7 @@ const nsis = @import("bundle/windows/nsis.zig");
 const output = @import("bundle/common/output.zig");
 const rpm = @import("bundle/linux/rpm.zig");
 const manifest = @import("manifest.zig");
+const sign = @import("bundle/macos/sign.zig");
 const staging = @import("bundle/common/staging.zig");
 const tar_gz = @import("bundle/common/tar_gz.zig");
 const zip = @import("bundle/common/zip.zig");
@@ -275,11 +276,17 @@ pub fn project(
             .icons = png_icons,
             .icns_path = icns_path,
             .plist_entries = options.plist_entries,
+            .sign = signConfig(options.sign, paths),
         }, arena) catch |err| switch (err) {
             error.MissingIcon => return fail(
                 "macOS app requires an ICNS or at least one square PNG icon",
                 .{},
             ),
+            error.CodesignNotFound => return fail(
+                "codesign not found; signing the macOS app requires a macOS host",
+                .{},
+            ),
+            error.CodesignFailed => return fail("failed to sign '{s}'", .{app_dir}),
             else => return fail("failed to create '{s}': {t}", .{ app_dir, err }),
         };
 
@@ -304,6 +311,7 @@ pub fn project(
             .icons = png_icons,
             .icns_path = icns_path,
             .plist_entries = if (config.formats.app) |app_options| app_options.plist_entries else &.{},
+            .sign = signConfig(options.sign, paths),
             .volume_name = options.volume_name,
             .compression = switch (options.compression) {
                 .udzo => .udzo,
@@ -326,6 +334,11 @@ pub fn project(
                 "hdiutil not found; dmg packaging requires a macOS host",
                 .{},
             ),
+            error.CodesignNotFound => return fail(
+                "codesign not found; dmg packaging requires a macOS host",
+                .{},
+            ),
+            error.CodesignFailed => return fail("failed to sign the app inside '{s}'", .{path}),
             else => return fail("failed to create '{s}': {t}", .{ path, err }),
         };
 
@@ -403,6 +416,16 @@ pub fn project(
     }
 
     return artifacts.toOwnedSlice(allocator);
+}
+
+fn signConfig(options: ?manifest.Sign, paths: []const []const u8) ?sign.Config {
+    const value = options orelse return null;
+    return .{
+        .identity = value.identity,
+        .runtime = value.runtime,
+        .timestamp = value.timestamp,
+        .entitlements = if (value.entitlements) |index| paths[index] else null,
+    };
 }
 
 fn fail(comptime fmt: []const u8, args: anytype) error{BundleFailed} {

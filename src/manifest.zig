@@ -90,11 +90,20 @@ pub const PlistEntry = struct {
     value: PlistValue,
 };
 
+pub const Sign = struct {
+    identity: []const u8 = "-",
+    runtime: bool = false,
+    timestamp: bool = false,
+    entitlements: ?usize = null,
+};
+
 pub const App = struct {
     plist_entries: []const PlistEntry = &.{},
+    sign: ?Sign = null,
 };
 
 pub const Dmg = struct {
+    sign: ?Sign = null,
     volume_name: ?[]const u8 = null,
     compression: enum { udzo, udbz, ulfo } = .udzo,
     applications_link: bool = true,

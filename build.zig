@@ -63,6 +63,8 @@ pub const PlistValue = root.PlistValue;
 pub const Resource = root.Resource;
 /// RPM package options.
 pub const RpmOptions = root.RpmOptions;
+/// Code signing options for macOS bundles.
+pub const SignOptions = root.SignOptions;
 /// Source of the NSIS toolchain.
 pub const NsisSource = root.NsisSource;
 /// Windows installer options.

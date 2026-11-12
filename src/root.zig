@@ -23,6 +23,7 @@ const nsis = @import("bundle/windows/nsis.zig");
 const resources = @import("bundle/common/resources.zig");
 const rpm = @import("bundle/linux/rpm.zig");
 const settings = @import("settings.zig");
+const sign = @import("bundle/macos/sign.zig");
 const step = @import("step.zig");
 const tar_gz = @import("bundle/common/tar_gz.zig");
 const zip = @import("bundle/common/zip.zig");
@@ -85,6 +86,8 @@ pub const RpmOptions = settings.RpmOptions;
 pub const NsisSource = settings.NsisSource;
 /// Windows installer options.
 pub const NsisOptions = settings.NsisOptions;
+/// Code signing options for macOS bundles.
+pub const SignOptions = settings.SignOptions;
 /// tar.gz archive options.
 pub const TarGzOptions = settings.TarGzOptions;
 /// ZIP archive options.
@@ -105,6 +108,7 @@ test {
     std.testing.refAllDecls(resources);
     std.testing.refAllDecls(rpm);
     std.testing.refAllDecls(settings);
+    std.testing.refAllDecls(sign);
     std.testing.refAllDecls(step);
     std.testing.refAllDecls(tar_gz);
     std.testing.refAllDecls(zip);

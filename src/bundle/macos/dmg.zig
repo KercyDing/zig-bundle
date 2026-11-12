@@ -6,6 +6,7 @@ const files = @import("../common/files.zig");
 const icons = @import("../common/icons.zig");
 const manifest = @import("../../manifest.zig");
 const resources = @import("../common/resources.zig");
+const sign = @import("sign.zig");
 
 const Io = std.Io;
 
@@ -38,6 +39,7 @@ pub const Config = struct {
     icons: []const icons.Png = &.{},
     icns_path: ?[]const u8 = null,
     plist_entries: []const manifest.PlistEntry = &.{},
+    sign: ?sign.Config = null,
     volume_name: ?[]const u8 = null,
     compression: Compression = .udzo,
     applications_link: bool = true,
@@ -73,6 +75,7 @@ pub fn bundle(
         .icons = config.icons,
         .icns_path = config.icns_path,
         .plist_entries = config.plist_entries,
+        .sign = config.sign,
     }, allocator);
     if (config.applications_link) {
         try Io.Dir.cwd().symLink(io, "/Applications", applications, .{ .is_directory = true });

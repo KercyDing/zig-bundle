@@ -295,10 +295,29 @@ pub fn plistInteger(key: []const u8, value: i64) PlistEntry {
     return .{ .key = key, .value = .{ .integer = value } };
 }
 
+/// Code signing applied to a macOS app after it has been assembled.
+pub const SignOptions = struct {
+    /// `codesign` identity; "-" signs ad-hoc.
+    ///
+    /// macOS keys TCC grants (Screen Recording, Accessibility) to the code
+    /// signature, so an ad-hoc identity loses them on the next build. Use a
+    /// Developer ID or a long-lived self-signed certificate for those apps.
+    identity: []const u8 = "-",
+    /// Pass `--options runtime`. Required for notarization.
+    runtime: bool = false,
+    /// Pass `--timestamp`. Only Apple-issued identities support it.
+    timestamp: bool = false,
+    /// Entitlements property list applied to the bundle.
+    entitlements: ?std.Build.LazyPath = null,
+};
+
 /// macOS application bundle options.
 pub const AppBundleOptions = struct {
     /// Extra keys appended to the generated `Info.plist`.
     plist_entries: []const PlistEntry = &.{},
+    /// Signing applied after assembly. `null` keeps the linker's ad-hoc
+    /// signature, which macOS treats as invalid once `Contents/` is populated.
+    sign: ?SignOptions = .{},
 };
 
 /// DMG compression format passed to `hdiutil`.
@@ -338,6 +357,8 @@ pub const DmgOptions = struct {
     compression: DmgCompression = .udzo,
     /// Add an `/Applications` symlink to the image.
     applications_link: bool = true,
+    /// Signing applied to the staged app. See `AppBundleOptions.sign`.
+    sign: ?SignOptions = .{},
     /// Optional Finder background and icon layout.
     layout: ?DmgLayout = null,
 };
@@ -367,6 +388,16 @@ pub const NsisOptions = struct {
         desktop: bool = false,
     };
 };
+
+fn dupeSign(b: *std.Build, options: ?SignOptions) ?SignOptions {
+    const value = options orelse return null;
+    return .{
+        .identity = b.dupe(value.identity),
+        .runtime = value.runtime,
+        .timestamp = value.timestamp,
+        .entitlements = value.entitlements,
+    };
+}
 
 /// Validated, normalized settings owned by a `BundleStep`.
 pub const Settings = struct {
@@ -548,12 +579,16 @@ pub const Settings = struct {
                     },
                 };
             }
-            break :blk AppBundleOptions{ .plist_entries = entries };
+            break :blk AppBundleOptions{
+                .plist_entries = entries,
+                .sign = dupeSign(b, app_options.sign),
+            };
         } else null;
         const dmg: ?DmgOptions = if (options.formats.dmg) |dmg_options| DmgOptions{
             .volume_name = if (dmg_options.volume_name) |name| b.dupe(name) else null,
             .compression = dmg_options.compression,
             .applications_link = dmg_options.applications_link,
+            .sign = dupeSign(b, dmg_options.sign),
             .layout = if (dmg_options.layout) |layout| DmgLayout{
                 .background = layout.background,
                 .window_size = layout.window_size,
