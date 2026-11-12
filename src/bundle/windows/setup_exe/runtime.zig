@@ -19,7 +19,6 @@ const key_write: u32 = 0x20006;
 const reg_sz: u32 = 1;
 const reg_dword: u32 = 4;
 
-const movfile_replace_existing: u32 = 0x1;
 const movfile_delay_until_reboot: u32 = 0x4;
 
 const sw_shownormal: c_int = 1;
@@ -139,7 +138,6 @@ extern "advapi32" fn RegSetValueExW(
 extern "advapi32" fn RegCloseKey(key: windows.HKEY) callconv(.winapi) u32;
 extern "advapi32" fn RegDeleteTreeW(key: windows.HKEY, sub_key: windows.LPCWSTR) callconv(.winapi) u32;
 
-extern "kernel32" fn SetCurrentDirectoryW(path: windows.LPCWSTR) callconv(.winapi) c_int;
 extern "kernel32" fn MoveFileExW(
     existing: windows.LPCWSTR,
     new: ?windows.LPCWSTR,
@@ -189,7 +187,16 @@ pub fn main(init: std.process.Init) !void {
     const manifest = try readManifest(arena, io, executable_path);
 
     if (uninstall) {
-        const install_dir = std.fs.path.dirname(executable_path) orelse return error.InvalidUninstaller;
+        if (target_dir == null) {
+            const install_dir = std.fs.path.dirname(executable_path) orelse return error.InvalidUninstaller;
+            relocateUninstaller(init, arena, executable_path, install_dir, silent) catch |err| {
+                if (!silent) gui.showError(arena, "Uninstall failed", @errorName(err));
+                return err;
+            };
+            return;
+        }
+
+        const install_dir = target_dir.?;
         const icons = if (!silent and manifest.icon.len > 0)
             loadSetupIcons(init, arena, executable_path, manifest)
         else
@@ -206,7 +213,7 @@ pub fn main(init: std.process.Init) !void {
             )) return;
         }
 
-        uninstallApp(init, arena, executable_path, manifest) catch |err| {
+        uninstallApp(init, arena, executable_path, manifest, install_dir) catch |err| {
             if (!silent) gui.showError(arena, "Uninstall failed", @errorName(err));
             return err;
         };
@@ -399,35 +406,61 @@ fn installApp(
     };
 }
 
-fn uninstallApp(
+/// Relocates the uninstaller to TEMP and relaunches it with the install
+/// directory. A running executable cannot delete its own directory on Windows.
+fn relocateUninstaller(
     init: std.process.Init,
     allocator: std.mem.Allocator,
     executable_path: []const u8,
-    manifest: Manifest,
+    install_dir: []const u8,
+    silent: bool,
 ) !void {
     const io = init.io;
-    const install_dir = std.fs.path.dirname(executable_path) orelse return error.InvalidUninstaller;
-    const temp_dir = init.environ_map.get("TEMP") orelse install_dir;
-
-    if (std.unicode.wtf8ToWtf16LeAllocZ(allocator, temp_dir)) |temp_w| {
-        _ = SetCurrentDirectoryW(temp_w.ptr);
-    } else |_| {}
-
-    try removeShortcuts(init, allocator, manifest);
-    removeUninstallRegistry(allocator, manifest);
-
+    const temp_dir = init.environ_map.get("TEMP") orelse return error.MissingTemp;
     const temp_path = try std.fmt.allocPrint(allocator, "{s}\\zig-bundle-uninstall-{x}.exe", .{
         temp_dir,
         windows.GetCurrentProcessId(),
     });
 
-    if (moveFile(allocator, executable_path, temp_path)) {
-        defer scheduleDelete(allocator, temp_path);
-        try Io.Dir.cwd().deleteTree(io, install_dir);
-    } else {
-        try removeContents(allocator, io, install_dir, executable_path);
-        scheduleDelete(allocator, executable_path);
+    Io.Dir.cwd().deleteFile(io, temp_path) catch {};
+    try copyFile(io, executable_path, temp_path);
+
+    const argv: []const []const u8 = if (silent)
+        &.{ temp_path, "--uninstall", "--silent", "--dir", install_dir }
+    else
+        &.{ temp_path, "--uninstall", "--dir", install_dir };
+    _ = try std.process.spawn(io, .{
+        .argv = argv,
+        .cwd = .{ .path = temp_dir },
+        .stdin = .ignore,
+    });
+}
+
+fn deleteTreeRetry(io: Io, install_dir: []const u8) !void {
+    var attempt: usize = 0;
+    while (true) : (attempt += 1) {
+        Io.Dir.cwd().deleteTree(io, install_dir) catch |err| {
+            if (attempt >= 50) return err;
+            std.Io.sleep(io, std.Io.Duration.fromMilliseconds(100), .awake) catch {};
+            continue;
+        };
+        return;
     }
+}
+
+fn uninstallApp(
+    init: std.process.Init,
+    allocator: std.mem.Allocator,
+    executable_path: []const u8,
+    manifest: Manifest,
+    install_dir: []const u8,
+) !void {
+    const io = init.io;
+
+    try deleteTreeRetry(io, install_dir);
+    try removeShortcuts(init, allocator, manifest);
+    removeUninstallRegistry(allocator, manifest);
+    scheduleDelete(allocator, executable_path);
 }
 
 fn loadSetupIcons(
@@ -795,42 +828,6 @@ fn copyFile(io: Io, from: []const u8, to: []const u8) !void {
 
     _ = try writer.interface.sendFileAll(&reader, .unlimited);
     try writer.interface.flush();
-}
-
-fn removeContents(
-    allocator: std.mem.Allocator,
-    io: Io,
-    dir_path: []const u8,
-    skip_path: []const u8,
-) !void {
-    var dir = try Io.Dir.openDirAbsolute(io, dir_path, .{ .iterate = true });
-    defer dir.close(io);
-
-    var iterator = dir.iterate();
-    while (try iterator.next(io)) |entry| {
-        const child = try std.fs.path.join(allocator, &.{ dir_path, entry.name });
-        switch (entry.kind) {
-            .directory => {
-                try removeContents(allocator, io, child, skip_path);
-                Io.Dir.cwd().deleteDir(io, child) catch {};
-            },
-            .file => {
-                if (!std.mem.eql(u8, child, skip_path)) {
-                    Io.Dir.cwd().deleteFile(io, child) catch |err| switch (err) {
-                        error.FileNotFound => {},
-                        else => return err,
-                    };
-                }
-            },
-            else => {},
-        }
-    }
-}
-
-fn moveFile(allocator: std.mem.Allocator, from: []const u8, to: []const u8) bool {
-    const from_w = std.unicode.wtf8ToWtf16LeAllocZ(allocator, from) catch return false;
-    const to_w = std.unicode.wtf8ToWtf16LeAllocZ(allocator, to) catch return false;
-    return MoveFileExW(from_w.ptr, to_w.ptr, movfile_replace_existing) != 0;
 }
 
 fn scheduleDelete(allocator: std.mem.Allocator, path: []const u8) void {

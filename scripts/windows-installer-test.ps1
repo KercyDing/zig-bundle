@@ -22,6 +22,17 @@ function Invoke-Installer([string] $Path, [string[]] $Arguments) {
     Assert-True ($process.ExitCode -eq 0) "installer failed with exit code $($process.ExitCode): $Path $Arguments"
 }
 
+function Wait-For([scriptblock] $Condition, [string] $Description, [int] $TimeoutSeconds = 30) {
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        if (& $Condition) {
+            return
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    throw "timed out waiting for $Description"
+}
+
 function Clear-Installation {
     Remove-Item -LiteralPath $startMenuShortcut -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $desktopShortcut -Force -ErrorAction SilentlyContinue
@@ -78,16 +89,16 @@ Invoke-Installer $v2 @('--silent', '--dir', $dirArgument)
 
 # Uninstall and verify cleanup.
 Invoke-Installer $uninstaller @('--silent')
-Assert-True (-not (Test-Path -LiteralPath $installDir)) 'install directory remains after uninstall'
-Assert-True (-not (Test-Path -LiteralPath $registryKey)) 'uninstall registry key remains'
-Assert-True (-not (Test-Path -LiteralPath $startMenuShortcut)) 'start menu shortcut remains after uninstall'
-Assert-True (-not (Test-Path -LiteralPath $desktopShortcut)) 'desktop shortcut remains after uninstall'
+Wait-For { -not (Test-Path -LiteralPath $installDir) } 'install directory removal'
+Wait-For { -not (Test-Path -LiteralPath $registryKey) } 'uninstall registry key removal'
+Wait-For { -not (Test-Path -LiteralPath $startMenuShortcut) } 'start menu shortcut removal'
+Wait-For { -not (Test-Path -LiteralPath $desktopShortcut) } 'desktop shortcut removal'
 
 # Install again after uninstall.
 Invoke-Installer $v2 @('--silent', '--dir', $dirArgument)
 $registry = Get-ItemProperty -LiteralPath $registryKey
 Assert-True ($registry.DisplayVersion -eq '0.2.0') 'reinstall after uninstall failed'
 Invoke-Installer (Join-Path $installDir 'uninstall.exe') @('--silent')
-Assert-True (-not (Test-Path -LiteralPath $installDir)) 'install directory remains after second uninstall'
+Wait-For { -not (Test-Path -LiteralPath $installDir) } 'install directory removal after second uninstall'
 
 Write-Host 'Windows installer smoke test passed'
