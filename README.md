@@ -32,6 +32,14 @@ They do not implicitly include a `.app`.
 
 ## Dependency
 
+Pin a release:
+
+```bash
+zig fetch --save=bundle git+https://github.com/KercyDing/zig-bundle#v0.1.0
+```
+
+Track `main` for the latest changes; it may contain breaking changes:
+
 ```bash
 zig fetch --save=bundle git+https://github.com/KercyDing/zig-bundle#main
 ```
