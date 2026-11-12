@@ -16,7 +16,7 @@ pub const Config = struct {
     arch: []const u8,
     payload: []const resources.Entry,
     icons: []const icons.Png = &.{},
-    tool: ?[]const u8 = null,
+    appimagetool: ?[]const u8 = null,
 };
 
 /// Maps a Zig CPU architecture to the AppImage architecture name.
@@ -40,7 +40,7 @@ pub fn bundle(
     output_path: []const u8,
     allocator: std.mem.Allocator,
 ) !void {
-    const tool = try findTool(io, allocator, env_map, config.tool);
+    const tool = try findTool(io, allocator, env_map, config.appimagetool);
     const app_dir = try std.fs.path.join(allocator, &.{ output_dir, config.name });
 
     Io.Dir.cwd().deleteTree(io, app_dir) catch {};

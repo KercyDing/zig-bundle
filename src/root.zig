@@ -16,10 +16,13 @@ const deb = @import("bundle/linux/deb.zig");
 const resources = @import("bundle/common/resources.zig");
 const rpm = @import("bundle/linux/rpm.zig");
 const settings = @import("settings.zig");
-const setup_exe = @import("bundle/windows/setup_exe/root.zig");
+const nsis = @import("bundle/windows/nsis.zig");
 const step = @import("step.zig");
 const tar_gz = @import("bundle/common/tar_gz.zig");
 const zip = @import("bundle/common/zip.zig");
+
+/// Registers the bundle build step.
+pub const add = step.add;
 
 /// Application metadata shared by every output format.
 pub const App = settings.App;
@@ -46,13 +49,11 @@ pub const Resource = settings.Resource;
 /// RPM package options.
 pub const RpmOptions = settings.RpmOptions;
 /// Windows installer options.
-pub const SetupExeOptions = settings.SetupExeOptions;
+pub const NsisOptions = settings.NsisOptions;
 /// tar.gz archive options.
 pub const TarGzOptions = settings.TarGzOptions;
 /// ZIP archive options.
 pub const ZipOptions = settings.ZipOptions;
-/// Registers the bundle build step.
-pub const add = step.add;
 /// Build step that produces the configured bundles.
 pub const BundleStep = step.BundleStep;
 
@@ -66,7 +67,7 @@ test {
     std.testing.refAllDecls(rpm);
     std.testing.refAllDecls(settings);
     std.testing.refAllDecls(appimage);
-    std.testing.refAllDecls(setup_exe);
+    std.testing.refAllDecls(nsis);
     std.testing.refAllDecls(step);
     std.testing.refAllDecls(tar_gz);
     std.testing.refAllDecls(zip);

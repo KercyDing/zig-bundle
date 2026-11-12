@@ -47,10 +47,10 @@ jobs:
             format: zip
           - os: windows-latest
             target: x86_64-windows-gnu
-            format: setup_exe
+            format: nsis
           - os: windows-latest
             target: aarch64-windows-gnu
-            format: setup_exe
+            format: nsis
 
     steps:
       - uses: actions/checkout@v4
@@ -58,6 +58,15 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.16.0
+
+      - name: Install NSIS
+        if: matrix.format == 'nsis'
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            choco install nsis -y --no-progress
+            echo 'C:\Program Files (x86)\NSIS' >> "$GITHUB_PATH"
+          fi
 
       - name: Format check
         run: zig fmt --check src build.zig examples/build.zig examples/src
@@ -81,12 +90,18 @@ jobs:
         with:
           version: 0.16.0
 
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          "${env:ProgramFiles(x86)}\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Append
+
       - name: Build installers
         working-directory: examples
         shell: pwsh
         run: |
-          zig build bundle -Dformat=setup_exe -Dtarget=x86_64-windows-gnu '-Dapp-version=0.1.0'
-          zig build bundle -Dformat=setup_exe -Dtarget=x86_64-windows-gnu '-Dapp-version=0.2.0'
+          zig build bundle -Dformat=nsis -Dtarget=x86_64-windows-gnu '-Dapp-version=0.1.0'
+          zig build bundle -Dformat=nsis -Dtarget=x86_64-windows-gnu '-Dapp-version=0.2.0'
 
       - name: Run installer smoke test
         shell: pwsh
@@ -108,6 +123,18 @@ jobs:
         with:
           version: 0.16.0
 
+      - name: Install NSIS
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Linux) sudo apt-get update && sudo apt-get install -y nsis ;;
+            macOS) brew install nsis ;;
+            Windows)
+              choco install nsis -y --no-progress
+              echo 'C:\Program Files (x86)\NSIS' >> "$GITHUB_PATH"
+              ;;
+          esac
+
       - name: Cross-build
         working-directory: examples
         shell: bash
@@ -116,16 +143,16 @@ jobs:
 
           case "${{ matrix.os }}" in
             ubuntu-*)
-              zig build bundle -Dformat=setup_exe -Dtarget=x86_64-windows-gnu
-              zig build bundle -Dformat=setup_exe -Dtarget=aarch64-windows-gnu
+              zig build bundle -Dformat=nsis -Dtarget=x86_64-windows-gnu
+              zig build bundle -Dformat=nsis -Dtarget=aarch64-windows-gnu
               zig build bundle -Dformat=zip -Dtarget=x86_64-macos
               zig build bundle -Dformat=zip -Dtarget=aarch64-macos
               ;;
             macos-*)
               zig build bundle -Dformat=deb -Dtarget=x86_64-linux-gnu
               zig build bundle -Dformat=deb -Dtarget=aarch64-linux-gnu
-              zig build bundle -Dformat=setup_exe -Dtarget=x86_64-windows-gnu
-              zig build bundle -Dformat=setup_exe -Dtarget=aarch64-windows-gnu
+              zig build bundle -Dformat=nsis -Dtarget=x86_64-windows-gnu
+              zig build bundle -Dformat=nsis -Dtarget=aarch64-windows-gnu
               ;;
             windows-*)
               zig build bundle -Dformat=deb -Dtarget=x86_64-linux-gnu

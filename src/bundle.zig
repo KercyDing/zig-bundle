@@ -9,7 +9,7 @@ const output = @import("bundle/common/output.zig");
 const rpm = @import("bundle/linux/rpm.zig");
 const staging = @import("bundle/common/staging.zig");
 const settings = @import("settings.zig");
-const setup_exe = @import("bundle/windows/setup_exe/root.zig");
+const nsis = @import("bundle/windows/nsis.zig");
 const tar_gz = @import("bundle/common/tar_gz.zig");
 const zip = @import("bundle/common/zip.zig");
 
@@ -272,10 +272,10 @@ pub fn project(
             .arch = appimage_arch.?,
             .payload = payload.entries.items,
             .icons = png_icons,
-            .tool = options.tool,
+            .appimagetool = options.appimagetool,
         }, dir, path, arena) catch |err| switch (err) {
             error.AppImageToolNotFound => return step.fail(
-                "appimagetool not found; install it or set appimage.tool",
+                "appimagetool not found; install it or set appimage.appimagetool",
                 .{},
             ),
             error.MissingIcon => return step.fail(
@@ -288,22 +288,16 @@ pub fn project(
         try artifacts.append(b.allocator, b.dupe(path));
     }
 
-    if (config.setup_exe) |options| {
-        const runtime = config.setup_runtime orelse return step.fail("setup runtime was not built", .{});
-        const runtime_path = try staging.resolveLazyPath(b, step, runtime, arena);
-
-        const dir = try output.formatDir(io, arena, output_root, .setup_exe);
+    if (config.nsis) |options| {
+        const dir = try output.formatDir(io, arena, output_root, .nsis);
 
         const file_name = try std.fmt.allocPrint(arena, "{s}_{s}_{s}-setup{s}", .{
             config.name,
             config.version,
             @tagName(target.result.cpu.arch),
-            capabilities.extension(.setup_exe),
+            capabilities.extension(.nsis),
         });
         const path = try std.fs.path.join(arena, &.{ dir, file_name });
-
-        var file = try output.create(io, path);
-        defer file.close(io);
 
         var setup_icon_path: ?[]const u8 = ico_path;
         var generated_icon_path: ?[]const u8 = null;
@@ -326,7 +320,7 @@ pub fn project(
         }
         defer if (generated_icon_path) |generated_path| Io.Dir.cwd().deleteFile(io, generated_path) catch {};
 
-        setup_exe.bundle(io, file, .{
+        nsis.bundle(io, &b.graph.environ_map, .{
             .name = config.name,
             .identifier = config.identifier,
             .version = config.version,
@@ -335,16 +329,21 @@ pub fn project(
                 .current_user => .current_user,
                 .all_users => .all_users,
             },
+            .arch = @tagName(target.result.cpu.arch),
             .executable_name = config.executable.out_filename,
             .start_menu = options.shortcuts.start_menu,
             .desktop = options.shortcuts.desktop,
             .launch = options.launch_app,
             .payload = payload.entries.items,
-            .runtime_path = runtime_path,
             .icon_path = setup_icon_path,
             .icon_name = icon_name,
-        }, arena) catch |err| {
-            return step.fail("failed to create '{s}': {t}", .{ path, err });
+            .makensis = options.makensis,
+        }, dir, path, arena) catch |err| switch (err) {
+            error.MakensisNotFound => return step.fail(
+                "makensis not found; install NSIS or set nsis.makensis",
+                .{},
+            ),
+            else => return step.fail("failed to create '{s}': {t}", .{ path, err }),
         };
 
         try artifacts.append(b.allocator, b.dupe(path));

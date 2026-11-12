@@ -35,7 +35,7 @@ pub const Resource = root.Resource;
 /// RPM package options.
 pub const RpmOptions = root.RpmOptions;
 /// Windows installer options.
-pub const SetupExeOptions = root.SetupExeOptions;
+pub const NsisOptions = root.NsisOptions;
 /// tar.gz archive options.
 pub const TarGzOptions = root.TarGzOptions;
 /// ZIP archive options.

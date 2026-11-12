@@ -53,6 +53,6 @@ group example {
 
     [help] Package the example application as a Windows Setup.exe
     [fail] Example Setup.exe package failed.
-    setup_exe():
-        cd examples && zig build bundle -Dformat=setup_exe -Dtarget=x86_64-windows-gnu
+    nsis():
+        cd examples && zig build bundle -Dformat=nsis -Dtarget=x86_64-windows-gnu
 }

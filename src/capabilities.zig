@@ -1,7 +1,7 @@
 //! Host and target compatibility checks for bundle formats.
 const std = @import("std");
 
-pub const Format = enum { zip, tar_gz, deb, rpm, appimage, setup_exe };
+pub const Format = enum { zip, tar_gz, deb, rpm, appimage, nsis };
 
 /// Host platform a format can be produced on.
 pub const Host = enum { any, macos, linux };
@@ -18,7 +18,7 @@ pub fn spec(format: Format) Spec {
         .zip, .tar_gz => .{},
         .deb, .rpm => .{ .target_os = .linux },
         .appimage => .{ .hosts = .linux, .target_os = .linux },
-        .setup_exe => .{ .target_os = .windows },
+        .nsis => .{ .target_os = .windows },
     };
 }
 
@@ -42,7 +42,7 @@ pub fn extension(format: Format) []const u8 {
         .rpm => ".rpm",
         .appimage => ".AppImage",
         // The installer uses `-setup.exe`; the extension itself stays `.exe`.
-        .setup_exe => ".exe",
+        .nsis => ".exe",
     };
 }
 
@@ -92,11 +92,11 @@ test "appimage requires linux host and target" {
     try std.testing.expectError(error.UnsupportedTarget, check(.appimage, .linux, .x86_64, .windows, .x86_64));
 }
 
-test "setup_exe requires windows target" {
-    try check(.setup_exe, .linux, .x86_64, .windows, .x86_64);
+test "nsis requires windows target" {
+    try check(.nsis, .linux, .x86_64, .windows, .x86_64);
     try std.testing.expectError(
         error.UnsupportedTarget,
-        check(.setup_exe, .windows, .x86_64, .linux, .x86_64),
+        check(.nsis, .windows, .x86_64, .linux, .x86_64),
     );
 }
 

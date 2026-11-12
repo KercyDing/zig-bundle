@@ -30,7 +30,7 @@ pub fn build(b: *std.Build) void {
                 .{ .source = b.path("assets/nested"), .dest = "usr/share/hello-bundle/" },
             },
         } },
-        .setup_exe => .{ .setup_exe = .{
+        .nsis => .{ .nsis = .{
             .shortcuts = .{ .start_menu = true, .desktop = true },
         } },
     };
