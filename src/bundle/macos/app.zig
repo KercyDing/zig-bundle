@@ -22,17 +22,17 @@ pub const Config = struct {
 pub fn bundle(io: Io, app_dir: []const u8, config: Config, allocator: std.mem.Allocator) !void {
     Io.Dir.cwd().deleteTree(io, app_dir) catch {};
 
-    const contents = try std.fs.path.join(allocator, &.{ app_dir, "Contents" });
-    const macos = try std.fs.path.join(allocator, &.{ contents, "MacOS" });
-    const resources_dir = try std.fs.path.join(allocator, &.{ contents, "Resources" });
+    const contents = try std.Io.Dir.path.join(allocator, &.{ app_dir, "Contents" });
+    const macos = try std.Io.Dir.path.join(allocator, &.{ contents, "MacOS" });
+    const resources_dir = try std.Io.Dir.path.join(allocator, &.{ contents, "Resources" });
     try Io.Dir.cwd().createDirPath(io, macos);
     try Io.Dir.cwd().createDirPath(io, resources_dir);
 
     for (config.payload) |entry| {
         const dest = if (entry.executable)
-            try std.fs.path.join(allocator, &.{ macos, entry.archive_path })
+            try std.Io.Dir.path.join(allocator, &.{ macos, entry.archive_path })
         else
-            try std.fs.path.join(allocator, &.{ resources_dir, entry.archive_path });
+            try std.Io.Dir.path.join(allocator, &.{ resources_dir, entry.archive_path });
 
         switch (entry.kind) {
             .dir => try Io.Dir.cwd().createDirPath(io, dest),
@@ -41,11 +41,11 @@ pub fn bundle(io: Io, app_dir: []const u8, config: Config, allocator: std.mem.Al
     }
 
     const icon_file: ?[]const u8 = if (config.icns_path) |icns_path| blk: {
-        const dest = try std.fs.path.join(allocator, &.{ resources_dir, "icon.icns" });
+        const dest = try std.Io.Dir.path.join(allocator, &.{ resources_dir, "icon.icns" });
         try files.copyFile(io, icns_path, dest, false);
         break :blk "icon.icns";
     } else if (icons.hasIcnsSource(config.icons)) blk: {
-        const dest = try std.fs.path.join(allocator, &.{ resources_dir, "icon.icns" });
+        const dest = try std.Io.Dir.path.join(allocator, &.{ resources_dir, "icon.icns" });
         var file = try Io.Dir.cwd().createFile(io, dest, .{ .truncate = true });
         defer file.close(io);
         try icons.writeIcns(io, file, config.icons);
@@ -61,8 +61,8 @@ pub fn bundle(io: Io, app_dir: []const u8, config: Config, allocator: std.mem.Al
         .executable_name = config.executable_name,
         .icon_file = icon_file,
     });
-    try files.writeBytes(io, try std.fs.path.join(allocator, &.{ contents, "Info.plist" }), plist, false);
-    try files.writeBytes(io, try std.fs.path.join(allocator, &.{ contents, "PkgInfo" }), "APPL????", false);
+    try files.writeBytes(io, try std.Io.Dir.path.join(allocator, &.{ contents, "Info.plist" }), plist, false);
+    try files.writeBytes(io, try std.Io.Dir.path.join(allocator, &.{ contents, "PkgInfo" }), "APPL????", false);
 }
 
 pub const Info = struct {
@@ -137,9 +137,9 @@ test "provided icns is copied verbatim" {
 
     const icns_path = try tmp.dir.realPathFileAlloc(io, "custom.icns", allocator);
 
-    var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    var path_buffer: [std.Io.Dir.max_path_bytes]u8 = undefined;
     const path_len = try tmp.dir.realPath(io, &path_buffer);
-    const app_dir = try std.fs.path.join(allocator, &.{ path_buffer[0..path_len], "Test.app" });
+    const app_dir = try std.Io.Dir.path.join(allocator, &.{ path_buffer[0..path_len], "Test.app" });
 
     try bundle(io, app_dir, .{
         .name = "Test",
@@ -150,11 +150,11 @@ test "provided icns is copied verbatim" {
         .icns_path = icns_path,
     }, allocator);
 
-    const copied_path = try std.fs.path.join(allocator, &.{ app_dir, "Contents", "Resources", "icon.icns" });
+    const copied_path = try std.Io.Dir.path.join(allocator, &.{ app_dir, "Contents", "Resources", "icon.icns" });
     const copied = try Io.Dir.cwd().readFileAlloc(io, copied_path, allocator, .limited(1024));
     try std.testing.expectEqualStrings("custom icon", copied);
 
-    const plist_path = try std.fs.path.join(allocator, &.{ app_dir, "Contents", "Info.plist" });
+    const plist_path = try std.Io.Dir.path.join(allocator, &.{ app_dir, "Contents", "Info.plist" });
     const plist = try Io.Dir.cwd().readFileAlloc(io, plist_path, allocator, .limited(16 * 1024));
     try std.testing.expect(std.mem.indexOf(u8, plist, "<string>icon.icns</string>") != null);
 }

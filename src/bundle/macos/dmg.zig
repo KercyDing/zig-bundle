@@ -50,9 +50,9 @@ pub fn bundle(
     output_path: []const u8,
     allocator: std.mem.Allocator,
 ) !void {
-    const stage = try std.fs.path.join(allocator, &.{ output_dir, ".stage" });
+    const stage = try std.Io.Dir.path.join(allocator, &.{ output_dir, ".stage" });
     const app_dir = try std.fmt.allocPrint(allocator, "{s}/{s}.app", .{ stage, config.name });
-    const applications = try std.fs.path.join(allocator, &.{ stage, "Applications" });
+    const applications = try std.Io.Dir.path.join(allocator, &.{ stage, "Applications" });
 
     Io.Dir.cwd().deleteTree(io, stage) catch {};
     defer {
@@ -74,7 +74,6 @@ pub fn bundle(
     if (config.applications_link) {
         try Io.Dir.cwd().symLink(io, "/Applications", applications, .{ .is_directory = true });
     }
-
     const volume_name = config.volume_name orelse config.name;
     const format = switch (config.compression) {
         .udzo => "UDZO",
@@ -82,8 +81,8 @@ pub fn bundle(
         .ulfo => "ULFO",
     };
 
-    if (config.layout) |layout| {
-        try bundleWithLayout(io, config, layout, volume_name, format, stage, output_dir, output_path, allocator);
+    if (config.layout != null) {
+        try bundleMounted(io, config, volume_name, format, stage, output_dir, output_path, allocator);
     } else {
         try run(io, &.{
             "hdiutil",   "create",
@@ -96,10 +95,9 @@ pub fn bundle(
     }
 }
 
-fn bundleWithLayout(
+fn bundleMounted(
     io: Io,
     config: Config,
-    layout: Layout,
     volume_name: []const u8,
     format: []const u8,
     stage: []const u8,
@@ -108,16 +106,18 @@ fn bundleWithLayout(
     allocator: std.mem.Allocator,
 ) !void {
     var background_name: ?[]const u8 = null;
-    if (layout.background) |background| {
-        const name = std.fs.path.basename(background);
-        const dir = try std.fs.path.join(allocator, &.{ stage, ".background" });
-        try Io.Dir.cwd().createDirPath(io, dir);
-        try files.copyFile(io, background, try std.fs.path.join(allocator, &.{ dir, name }), false);
-        try run(io, &.{ "chflags", "hidden", dir });
-        background_name = name;
+    if (config.layout) |layout| {
+        if (layout.background) |background| {
+            const name = std.Io.Dir.path.basename(background);
+            const dir = try std.Io.Dir.path.join(allocator, &.{ stage, ".background" });
+            try Io.Dir.cwd().createDirPath(io, dir);
+            try files.copyFile(io, background, try std.Io.Dir.path.join(allocator, &.{ dir, name }), false);
+            try run(io, &.{ "chflags", "hidden", dir });
+            background_name = name;
+        }
     }
 
-    const image = try std.fs.path.join(allocator, &.{ output_dir, ".layout.dmg" });
+    const image = try std.Io.Dir.path.join(allocator, &.{ output_dir, ".layout.dmg" });
     Io.Dir.cwd().deleteFile(io, image) catch {};
     defer Io.Dir.cwd().deleteFile(io, image) catch {};
 
@@ -133,11 +133,13 @@ fn bundleWithLayout(
     const mount = try attach(io, image, allocator);
     var mounted = true;
     defer if (mounted) run(io, &.{ "hdiutil", "detach", "-quiet", mount }) catch {};
-    const mounted_name = std.fs.path.basename(mount);
-    const script_path = try std.fs.path.join(allocator, &.{ output_dir, ".layout.applescript" });
-    defer Io.Dir.cwd().deleteFile(io, script_path) catch {};
-    try files.writeBytes(io, script_path, try renderAppleScript(allocator, config, layout, mounted_name, background_name), false);
-    try runInherit(io, &.{ "osascript", script_path });
+    if (config.layout) |layout| {
+        const mounted_name = std.Io.Dir.path.basename(mount);
+        const script_path = try std.Io.Dir.path.join(allocator, &.{ output_dir, ".layout.applescript" });
+        defer Io.Dir.cwd().deleteFile(io, script_path) catch {};
+        try files.writeBytes(io, script_path, try renderAppleScript(allocator, config, layout, mounted_name, background_name), false);
+        try runInherit(io, &.{ "osascript", script_path });
+    }
     try run(io, &.{ "hdiutil", "detach", "-quiet", mount });
     mounted = false;
     try run(io, &.{ "hdiutil", "convert", "-quiet", image, "-format", format, "-ov", "-o", output_path });

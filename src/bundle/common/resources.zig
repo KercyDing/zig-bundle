@@ -59,7 +59,7 @@ pub const Payload = struct {
 
         var iterator = dir.iterate();
         while (try iterator.next(io)) |entry| {
-            const child_source = try std.fs.path.join(allocator, &.{ source_path, entry.name });
+            const child_source = try std.Io.Dir.path.join(allocator, &.{ source_path, entry.name });
             const child_dest = try childArchivePath(allocator, archive_path, entry.name);
             switch (entry.kind) {
                 .directory => try self.addDirectory(allocator, io, child_source, child_dest),
@@ -91,7 +91,7 @@ pub fn sanitizePath(allocator: std.mem.Allocator, path: []const u8) ![]const u8 
     const trimmed = std.mem.trimEnd(u8, path, "/\\");
     if (trimmed.len == 0) return error.InvalidPath;
     if (trimmed[0] == '/' or trimmed[0] == '\\') return error.InvalidPath;
-    if (std.fs.path.isAbsolute(trimmed)) return error.InvalidPath;
+    if (std.Io.Dir.path.isAbsolute(trimmed)) return error.InvalidPath;
 
     const normalized = try allocator.alloc(u8, trimmed.len);
     errdefer allocator.free(normalized);

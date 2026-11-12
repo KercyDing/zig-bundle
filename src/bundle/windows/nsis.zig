@@ -361,10 +361,10 @@ fn findTool(
     }
 
     const path = env_map.get("PATH") orelse return error.MakensisNotFound;
-    var dirs = std.mem.tokenizeScalar(u8, path, std.fs.path.delimiter);
+    var dirs = std.mem.tokenizeScalar(u8, path, std.Io.Dir.path.delimiter);
     while (dirs.next()) |dir| {
         if (dir.len == 0) continue;
-        const candidate = try std.fs.path.join(allocator, &.{ dir, name });
+        const candidate = try std.Io.Dir.path.join(allocator, &.{ dir, name });
         Io.Dir.cwd().access(io, candidate, .{ .execute = true }) catch continue;
         return candidate;
     }

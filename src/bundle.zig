@@ -84,7 +84,7 @@ pub fn project(
             package_basename,
             capabilities.extension(.deb),
         });
-        const path = try std.fs.path.join(arena, &.{ dir, file_name });
+        const path = try std.Io.Dir.path.join(arena, &.{ dir, file_name });
 
         const changelog_path: ?[]const u8 = if (options.changelog) |changelog|
             paths[changelog]
@@ -176,7 +176,7 @@ pub fn project(
             options.release,
             config.rpm_arch.?,
         });
-        const path = try std.fs.path.join(arena, &.{ dir, package_basename });
+        const path = try std.Io.Dir.path.join(arena, &.{ dir, package_basename });
 
         const rpm_scripts: ?[]const u8 = if (options.maintainer_scripts) |scripts|
             paths[scripts]
@@ -235,7 +235,7 @@ pub fn project(
             config.version,
             config.appimage_arch.?,
         });
-        const path = try std.fs.path.join(arena, &.{ dir, file_name });
+        const path = try std.Io.Dir.path.join(arena, &.{ dir, file_name });
 
         appimage.bundle(io, env_map, .{
             .name = config.name,
@@ -292,7 +292,7 @@ pub fn project(
             config.version,
             config.target_arch,
         });
-        const path = try std.fs.path.join(arena, &.{ dir, file_name });
+        const path = try std.Io.Dir.path.join(arena, &.{ dir, file_name });
 
         dmg.bundle(io, .{
             .name = config.name,
@@ -339,7 +339,7 @@ pub fn project(
             config.target_arch,
             capabilities.extension(.nsis),
         });
-        const path = try std.fs.path.join(arena, &.{ dir, file_name });
+        const path = try std.Io.Dir.path.join(arena, &.{ dir, file_name });
 
         var setup_icon_path: ?[]const u8 = ico_path;
         var generated_icon_path: ?[]const u8 = null;
@@ -350,7 +350,7 @@ pub fn project(
 
         if (setup_icon_path == null and png_icons.len > 0) {
             const generated = try std.fmt.allocPrint(arena, "{s}.generated.ico", .{config.name});
-            setup_icon_path = try std.fs.path.join(arena, &.{ dir, generated });
+            setup_icon_path = try std.Io.Dir.path.join(arena, &.{ dir, generated });
             generated_icon_path = setup_icon_path;
             {
                 var icon_file = try Io.Dir.cwd().createFile(io, setup_icon_path.?, .{ .truncate = true });
@@ -363,7 +363,7 @@ pub fn project(
         defer if (generated_icon_path) |generated_path| Io.Dir.cwd().deleteFile(io, generated_path) catch {};
 
         const makensis_path: ?[]const u8 = if (options.makensis) |index| paths[index] else null;
-        const nsis_dir: ?[]const u8 = if (makensis_path) |tool| std.fs.path.dirname(tool) else null;
+        const nsis_dir: ?[]const u8 = if (makensis_path) |tool| std.Io.Dir.path.dirname(tool) else null;
 
         nsis.bundle(io, env_map, .{
             .name = config.name,

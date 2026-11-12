@@ -356,9 +356,9 @@ both if you also want the unpacked directory:
 .formats = .{ .app = .{}, .dmg = .{} },
 ```
 
-The background image is copied into `.background/` and hidden from Finder.
-Finder window size, icon size, and icon positions are optional; the values above
-are the defaults.
+The background image is copied into `.background/` and hidden from Finder. Finder
+window size, icon size, and icon positions are optional; the values above are the
+defaults.
 
 ## Example
 

@@ -20,7 +20,7 @@ pub fn copyFile(io: Io, source: []const u8, dest: []const u8, executable: bool) 
 
 /// Writes bytes to `path`, creating parent directories.
 pub fn writeBytes(io: Io, path: []const u8, bytes: []const u8, executable: bool) !void {
-    if (std.fs.path.dirname(path)) |dir| try Io.Dir.cwd().createDirPath(io, dir);
+    if (std.Io.Dir.path.dirname(path)) |dir| try Io.Dir.cwd().createDirPath(io, dir);
     try Io.Dir.cwd().writeFile(io, .{
         .sub_path = path,
         .data = bytes,

@@ -45,16 +45,16 @@ pub fn main(init: std.process.Init) !void {
     const cwd = try std.process.currentPathAlloc(init.io, allocator);
     const paths = try allocator.alloc([]const u8, raw_paths.len);
     for (raw_paths, paths) |path, *dest| {
-        dest.* = if (std.fs.path.isAbsolute(path))
+        dest.* = if (std.Io.Dir.path.isAbsolute(path))
             path
         else
-            try std.fs.path.join(allocator, &.{ cwd, path });
+            try std.Io.Dir.path.join(allocator, &.{ cwd, path });
     }
     const raw_output_root = args.items[1 + count];
-    const output_root = if (std.fs.path.isAbsolute(raw_output_root))
+    const output_root = if (std.Io.Dir.path.isAbsolute(raw_output_root))
         raw_output_root
     else
-        try std.fs.path.join(allocator, &.{ cwd, raw_output_root });
+        try std.Io.Dir.path.join(allocator, &.{ cwd, raw_output_root });
     if (args.items.len < 2 + count + 1) {
         std.debug.print("zig-bundle: missing artifacts path\n", .{});
         std.process.exit(1);
@@ -74,7 +74,7 @@ pub fn main(init: std.process.Init) !void {
     var buffer: [16 * 1024]u8 = undefined;
     var writer = file.writer(init.io, &buffer);
     for (artifacts) |path| {
-        const relative = try std.fs.path.relativeAlloc(allocator, cwd, init.environ_map, output_root, path);
+        const relative = try std.Io.Dir.path.relativeAlloc(allocator, cwd, init.environ_map, output_root, path);
         try writer.interface.print("{s}\n", .{relative});
     }
     try writer.interface.flush();
@@ -83,10 +83,10 @@ pub fn main(init: std.process.Init) !void {
 fn listArtifacts(io: std.Io, allocator: std.mem.Allocator, prefix: []const u8, path: []const u8) !void {
     const cwd = try std.process.currentPathAlloc(io, allocator);
     const clean_prefix = if (std.mem.startsWith(u8, prefix, "./")) prefix[2..] else prefix;
-    const root = if (std.fs.path.isAbsolute(clean_prefix))
+    const root = if (std.Io.Dir.path.isAbsolute(clean_prefix))
         clean_prefix
     else
-        try std.fs.path.join(allocator, &.{ cwd, clean_prefix });
+        try std.Io.Dir.path.join(allocator, &.{ cwd, clean_prefix });
     const bytes = try std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(16 * 1024 * 1024));
     var stdout_buffer: [16 * 1024]u8 = undefined;
     var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
@@ -99,7 +99,7 @@ fn listArtifacts(io: std.Io, allocator: std.mem.Allocator, prefix: []const u8, p
             try out.print("zig-bundle: finished {d} bundle(s):\n", .{std.mem.count(u8, bytes, "\n")});
             first = false;
         }
-        try out.print("  {s}\n", .{try std.fs.path.join(allocator, &.{ root, line })});
+        try out.print("  {s}\n", .{try std.Io.Dir.path.join(allocator, &.{ root, line })});
     }
     try out.flush();
 }

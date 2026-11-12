@@ -38,7 +38,7 @@ pub fn add(b: *std.Build, options: Options, comptime build_zig: type) *BundleSte
             .dir => {
                 const dir = nsis.source.path.?;
                 const tool_name = if (builtin.os.tag == .windows) "makensis.exe" else "makensis";
-                const tool = std.fs.path.join(b.allocator, &.{ dir, tool_name }) catch @panic("OOM");
+                const tool = std.Io.Dir.path.join(b.allocator, &.{ dir, tool_name }) catch @panic("OOM");
                 self.settings.nsis_tool = .{ .cwd_relative = tool };
             },
         }
@@ -124,7 +124,7 @@ fn findLlvmStrip(b: *std.Build) ?[]const u8 {
     const io = b.graph.io;
     const path = b.graph.environ_map.get("PATH") orelse return null;
 
-    var dirs = std.mem.tokenizeScalar(u8, path, std.fs.path.delimiter);
+    var dirs = std.mem.tokenizeScalar(u8, path, std.Io.Dir.path.delimiter);
     while (dirs.next()) |dir| {
         if (dir.len == 0) continue;
 

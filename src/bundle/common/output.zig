@@ -22,7 +22,7 @@ pub fn artifactPath(
         target_name,
         capabilities.extension(format),
     });
-    return std.fs.path.join(allocator, &.{ dir, file_name });
+    return std.Io.Dir.path.join(allocator, &.{ dir, file_name });
 }
 
 /// Creates the directory for a format and returns it.
@@ -32,7 +32,7 @@ pub fn formatDir(
     output_root: []const u8,
     format: capabilities.Format,
 ) ![]const u8 {
-    const dir = try std.fs.path.join(allocator, &.{ output_root, @tagName(format) });
+    const dir = try std.Io.Dir.path.join(allocator, &.{ output_root, @tagName(format) });
     try Io.Dir.cwd().createDirPath(io, dir);
     return dir;
 }

@@ -30,7 +30,7 @@ pub fn prepare(
 
     for (config.resources) |resource| {
         const source_path = paths[resource.path];
-        const base_name = std.fs.path.basename(std.mem.trimEnd(u8, source_path, "/\\"));
+        const base_name = std.Io.Dir.path.basename(std.mem.trimEnd(u8, source_path, "/\\"));
         const dest = resource.dest orelse base_name;
 
         const stat = Io.Dir.cwd().statFile(io, source_path, .{}) catch |err| {
@@ -77,9 +77,9 @@ pub fn prepare(
                 var iterator = dir.iterate();
                 while (try iterator.next(io)) |entry| {
                     if (entry.kind != .file) continue;
-                    if (!std.ascii.eqlIgnoreCase(std.fs.path.extension(entry.name), ".png")) continue;
+                    if (!std.ascii.eqlIgnoreCase(std.Io.Dir.path.extension(entry.name), ".png")) continue;
 
-                    const child = try std.fs.path.join(allocator, &.{ path, entry.name });
+                    const child = try std.Io.Dir.path.join(allocator, &.{ path, entry.name });
                     try addIconPng(io, allocator, child, &png_icons);
                     found = true;
                 }

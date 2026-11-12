@@ -270,7 +270,7 @@ fn addAsset(io: Io, allocator: std.mem.Allocator, asset: Asset, items: *std.Arra
     switch (stat.kind) {
         .file => {
             const path = if (dest_is_directory)
-                try std.fmt.allocPrint(allocator, "{s}/{s}", .{ dest, std.fs.path.basename(source) })
+                try std.fmt.allocPrint(allocator, "{s}/{s}", .{ dest, std.Io.Dir.path.basename(source) })
             else
                 dest;
             try appendAssetFile(io, allocator, source, path, asset.mode, items);
@@ -295,7 +295,7 @@ fn addAssetDirectory(
 
     var iterator = dir.iterate();
     while (try iterator.next(io)) |entry| {
-        const child_source = try std.fs.path.join(allocator, &.{ source, entry.name });
+        const child_source = try std.Io.Dir.path.join(allocator, &.{ source, entry.name });
         const child_dest = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ dest, entry.name });
         switch (entry.kind) {
             .directory => try addAssetDirectory(io, allocator, child_source, child_dest, mode, items),
@@ -711,7 +711,7 @@ fn buildDependencies(
 }
 
 fn readScript(io: Io, allocator: std.mem.Allocator, dir: []const u8, name: []const u8) !?[]const u8 {
-    const path = try std.fs.path.join(allocator, &.{ dir, name });
+    const path = try std.Io.Dir.path.join(allocator, &.{ dir, name });
     const stat = Io.Dir.cwd().statFile(io, path, .{}) catch |err| switch (err) {
         error.FileNotFound => return null,
         else => return err,

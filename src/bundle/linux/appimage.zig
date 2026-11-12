@@ -42,7 +42,7 @@ pub fn bundle(
     allocator: std.mem.Allocator,
 ) !void {
     const tool = try findTool(io, allocator, env_map, config.appimagetool);
-    const app_dir = try std.fs.path.join(allocator, &.{ output_dir, config.name });
+    const app_dir = try std.Io.Dir.path.join(allocator, &.{ output_dir, config.name });
 
     Io.Dir.cwd().deleteTree(io, app_dir) catch {};
     defer Io.Dir.cwd().deleteTree(io, app_dir) catch {};
@@ -140,10 +140,10 @@ fn findTool(
     }
 
     const path = env_map.get("PATH") orelse return error.AppImageToolNotFound;
-    var dirs = std.mem.tokenizeScalar(u8, path, std.fs.path.delimiter);
+    var dirs = std.mem.tokenizeScalar(u8, path, std.Io.Dir.path.delimiter);
     while (dirs.next()) |dir| {
         if (dir.len == 0) continue;
-        const candidate = try std.fs.path.join(allocator, &.{ dir, name });
+        const candidate = try std.Io.Dir.path.join(allocator, &.{ dir, name });
         Io.Dir.cwd().access(io, candidate, .{ .execute = true }) catch continue;
         return candidate;
     }
