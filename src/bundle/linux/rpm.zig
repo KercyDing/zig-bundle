@@ -30,6 +30,13 @@ pub const Asset = struct {
     mode: u32 = 0o644,
 };
 
+pub const Scripts = struct {
+    pre_install: ?[]const u8 = null,
+    post_install: ?[]const u8 = null,
+    pre_uninstall: ?[]const u8 = null,
+    post_uninstall: ?[]const u8 = null,
+};
+
 pub const Config = struct {
     name: []const u8,
     version: []const u8,
@@ -43,6 +50,8 @@ pub const Config = struct {
     payload: []const resources.Entry,
     icons: []const icons.Png = &.{},
     assets: []const Asset = &.{},
+    /// Directory containing `preinst`, `postinst`, `prerm` and `postrm`.
+    maintainer_scripts_path: ?[]const u8 = null,
     mtime: u64 = tar_gz.default_mtime,
     options: Options = .{},
 };
@@ -178,7 +187,8 @@ pub fn bundle(
     const cpio = try writeCpio(allocator, items.items, contents, config.mtime);
     const payload = try tar_gz.gzipBytes(allocator, cpio, 9);
 
-    const header = try buildHeader(allocator, config, package, items.items, contents, installed_size, payload, cpio);
+    const scripts = try loadScripts(io, allocator, config.maintainer_scripts_path);
+    const header = try buildHeader(allocator, config, package, items.items, contents, installed_size, payload, cpio, scripts);
     const signature = try buildSignature(allocator, header, payload.len);
 
     var writer_buffer: [16 * 1024]u8 = undefined;
@@ -620,6 +630,7 @@ fn buildDependencies(
     release: []const u8,
     epoch: ?u32,
     has_config: bool,
+    scripts: Scripts,
 ) !struct { provides: []Dependency, requires: []Dependency, conflicts: []Dependency, obsoletes: []Dependency } {
     const evr = if (epoch) |e|
         try std.fmt.allocPrint(allocator, "{d}:{s}-{s}", .{ e, version, release })
@@ -650,6 +661,18 @@ fn buildDependencies(
         try requires.append(allocator, .{ .name = config_name, .flags = 0x10000000 | 0x8, .version = evr });
     }
 
+    const script_phases = [_]struct { script: ?[]const u8, flag: u32 }{
+        .{ .script = scripts.pre_install, .flag = 1 << 9 },
+        .{ .script = scripts.post_install, .flag = 1 << 10 },
+        .{ .script = scripts.pre_uninstall, .flag = 1 << 11 },
+        .{ .script = scripts.post_uninstall, .flag = 1 << 12 },
+    };
+    for (script_phases) |phase| {
+        if (phase.script != null) {
+            try requires.append(allocator, .{ .name = "/bin/sh", .flags = (1 << 8) | phase.flag, .version = "" });
+        }
+    }
+
     for (config.options.provides) |entry| try provides.append(allocator, parseDependency(entry));
     for (config.options.requires) |entry| try requires.append(allocator, parseDependency(entry));
 
@@ -678,6 +701,29 @@ fn buildDependencies(
     };
 }
 
+fn readScript(io: Io, allocator: std.mem.Allocator, dir: []const u8, name: []const u8) !?[]const u8 {
+    const path = try std.fs.path.join(allocator, &.{ dir, name });
+    const stat = Io.Dir.cwd().statFile(io, path, .{}) catch |err| switch (err) {
+        error.FileNotFound => return null,
+        else => return err,
+    };
+    if (stat.kind != .file) return null;
+    return try Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(1024 * 1024));
+}
+
+fn loadScripts(io: Io, allocator: std.mem.Allocator, dir_path: ?[]const u8) !Scripts {
+    const dir = dir_path orelse return .{};
+    const stat = try Io.Dir.cwd().statFile(io, dir, .{});
+    if (stat.kind != .directory) return error.InvalidMaintainerScripts;
+
+    return .{
+        .pre_install = try readScript(io, allocator, dir, "preinst"),
+        .post_install = try readScript(io, allocator, dir, "postinst"),
+        .pre_uninstall = try readScript(io, allocator, dir, "prerm"),
+        .post_uninstall = try readScript(io, allocator, dir, "postrm"),
+    };
+}
+
 fn buildHeader(
     allocator: std.mem.Allocator,
     config: Config,
@@ -687,6 +733,7 @@ fn buildHeader(
     installed_size: u64,
     payload: []const u8,
     cpio: []const u8,
+    scripts: Scripts,
 ) ![]u8 {
     const release = config.options.release;
     const epoch = config.options.epoch;
@@ -768,7 +815,7 @@ fn buildHeader(
         try file_verify_flags.append(allocator, 0xffffffff);
     }
 
-    const deps = try buildDependencies(allocator, config, package, config.version, release, epoch, has_config);
+    const deps = try buildDependencies(allocator, config, package, config.version, release, epoch, has_config, scripts);
 
     const description = config.description orelse "";
     const summary = firstLine(description);
@@ -831,6 +878,11 @@ fn buildHeader(
     try builder.addString(5062, "utf-8");
     try builder.addStrings(5092, &.{try sha256Hex(allocator, payload)});
     try builder.addStrings(5097, &.{try sha256Hex(allocator, cpio)});
+
+    if (scripts.pre_install) |script| try builder.addString(1023, script);
+    if (scripts.post_install) |script| try builder.addString(1024, script);
+    if (scripts.pre_uninstall) |script| try builder.addString(1025, script);
+    if (scripts.post_uninstall) |script| try builder.addString(1026, script);
 
     return builder.serialize(63);
 }

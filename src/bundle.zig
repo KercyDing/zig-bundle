@@ -196,6 +196,11 @@ pub fn project(
         });
         const path = try std.fs.path.join(arena, &.{ dir, package_basename });
 
+        const rpm_scripts: ?[]const u8 = if (options.maintainer_scripts) |scripts|
+            try staging.resolveLazyPath(b, step, scripts, arena)
+        else
+            null;
+
         const rpm_assets = try arena.alloc(rpm.Asset, options.assets.len);
         for (options.assets, rpm_assets) |asset, *dest| {
             dest.* = .{
@@ -220,6 +225,7 @@ pub fn project(
             .payload = payload.entries.items,
             .icons = png_icons,
             .assets = rpm_assets,
+            .maintainer_scripts_path = rpm_scripts,
             .mtime = mtime,
             .options = .{
                 .release = options.release,

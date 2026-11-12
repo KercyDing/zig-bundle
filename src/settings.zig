@@ -205,6 +205,8 @@ pub const RpmOptions = struct {
     obsoletes: []const []const u8 = &.{},
     /// Additional files installed by the package.
     assets: []const Asset = &.{},
+    /// Directory containing `preinst`, `postinst`, `prerm` and `postrm`.
+    maintainer_scripts: ?std.Build.LazyPath = null,
 };
 
 /// Windows installer options.
@@ -356,6 +358,7 @@ pub const Settings = struct {
                 .conflicts = dupeStrings(b, rpm_options.conflicts),
                 .obsoletes = dupeStrings(b, rpm_options.obsoletes),
                 .assets = assets,
+                .maintainer_scripts = rpm_options.maintainer_scripts,
             };
         } else null;
 

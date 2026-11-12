@@ -48,6 +48,7 @@ pub fn add(b: *std.Build, options: Options) *BundleStep {
     }
     if (self.settings.rpm) |rpm| {
         for (rpm.assets) |asset| asset.source.addStepDependencies(&self.step);
+        if (rpm.maintainer_scripts) |scripts| scripts.addStepDependencies(&self.step);
     }
     if (self.settings.deb) |deb| {
         if (deb.changelog) |changelog| changelog.addStepDependencies(&self.step);

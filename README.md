@@ -174,7 +174,8 @@ RPM metadata mirrors the same payload and asset model:
 Files under `etc/` are marked as RPM config files and get automatic
 `config(<name>)` provides/requires. Man pages under `usr/share/man` are
 gzip-compressed automatically. Dependencies accept `name`, `name = version`,
-and comparison operators.
+and comparison operators. `maintainer_scripts` installs `preinst`, `postinst`,
+`prerm`, and `postrm` as RPM scriptlets and adds the `/bin/sh` requirement.
 
 Set top-level `.enable_llvm_strip = true` to strip the bundled executable with
 the system `llvm-strip` for every format; the build fails with an installation
