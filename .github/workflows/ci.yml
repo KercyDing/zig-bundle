@@ -57,7 +57,7 @@ jobs:
 
       - uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: 0.17.1
 
       - name: Format check
         run: zig fmt --check src build.zig examples/build.zig examples/src
@@ -79,7 +79,7 @@ jobs:
 
       - uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: 0.17.1
 
       - name: Build installers
         working-directory: examples
@@ -115,7 +115,7 @@ jobs:
 
       - uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: 0.17.1
 
       - name: Cross-build
         working-directory: examples
