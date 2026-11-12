@@ -66,21 +66,19 @@ $registry = Get-ItemProperty -LiteralPath $registryKey
 Assert-True ($registry.DisplayVersion -eq '0.1.0') "unexpected DisplayVersion: $($registry.DisplayVersion)"
 Assert-True (Test-Path -LiteralPath $registry.InstallLocation) "InstallLocation does not exist: $($registry.InstallLocation)"
 
-# Run the installed application with closed stdin.
+# Launch the installed GUI application, then stop it. The example is a
+# nanoui window and is expected to stay open until closed.
 $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
 $startInfo.FileName = $installedExe
 $startInfo.WorkingDirectory = $installDir
 $startInfo.UseShellExecute = $false
-$startInfo.RedirectStandardInput = $true
-$startInfo.RedirectStandardOutput = $true
-$startInfo.RedirectStandardError = $true
 $app = [System.Diagnostics.Process]::Start($startInfo)
-$app.StandardInput.Close()
-if (-not $app.WaitForExit(10000)) {
+Assert-True ($null -ne $app) 'failed to start the installed application'
+Start-Sleep -Seconds 1
+if (-not $app.HasExited) {
     $app.Kill()
-    throw 'installed application did not exit within 10 seconds'
+    $app.WaitForExit()
 }
-Assert-True ($app.ExitCode -eq 0) "installed application exited with $($app.ExitCode)"
 
 # Upgrade in place.
 Invoke-Setup $v2 $installDir

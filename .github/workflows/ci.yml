@@ -125,10 +125,9 @@ jobs:
 
           case "${{ matrix.os }}" in
             ubuntu-*)
+              # macOS targets need a macOS host: nanoui links AppKit/Metal.
               zig build bundle -Dformat=nsis -Dtarget=x86_64-windows-gnu
               zig build bundle -Dformat=nsis -Dtarget=aarch64-windows-gnu
-              zig build bundle -Dformat=zip -Dtarget=x86_64-macos
-              zig build bundle -Dformat=zip -Dtarget=aarch64-macos
               ;;
             macos-*)
               zig build bundle -Dformat=deb -Dtarget=x86_64-linux-gnu
@@ -139,7 +138,5 @@ jobs:
             windows-*)
               zig build bundle -Dformat=deb -Dtarget=x86_64-linux-gnu
               zig build bundle -Dformat=deb -Dtarget=aarch64-linux-gnu
-              zig build bundle -Dformat=zip -Dtarget=x86_64-macos
-              zig build bundle -Dformat=zip -Dtarget=aarch64-macos
               ;;
           esac
