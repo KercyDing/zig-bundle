@@ -218,6 +218,33 @@ pub const AppImageOptions = struct {
     appimagetool: ?[]const u8 = null,
 };
 
+/// Source of the NSIS toolchain.
+pub const NsisSource = struct {
+    /// Selected source.
+    kind: Kind = .bundled,
+    /// Directory used by `.dir`.
+    path: ?[]const u8 = null,
+
+    pub const Kind = enum {
+        /// Bundled NSIS toolchain.
+        bundled,
+        /// Search `makensis` on `PATH`.
+        system,
+        /// Explicit directory.
+        dir,
+    };
+
+    /// Bundled NSIS toolchain.
+    pub const bundled: NsisSource = .{};
+    /// Search `makensis` on `PATH`.
+    pub const system: NsisSource = .{ .kind = .system };
+
+    /// Directory containing `makensis` (`makensis.exe` on Windows).
+    pub fn dir(path: []const u8) NsisSource {
+        return .{ .kind = .dir, .path = path };
+    }
+};
+
 /// Windows installer options.
 pub const NsisOptions = struct {
     /// Per-user install by default; `all_users` requires elevation.
@@ -226,8 +253,8 @@ pub const NsisOptions = struct {
     shortcuts: Shortcuts = .{},
     /// Launch the application after installation.
     launch_app: bool = true,
-    /// `makensis` executable name or path. Defaults to searching `PATH`.
-    makensis: ?[]const u8 = null,
+    /// NSIS toolchain source. Defaults to the bundled toolchain.
+    source: NsisSource = .bundled,
 
     pub const InstallScope = enum {
         /// Install under `%LOCALAPPDATA%\Programs`.
@@ -269,6 +296,10 @@ pub const Settings = struct {
     rpm: ?RpmOptions,
     appimage: ?AppImageOptions,
     nsis: ?NsisOptions,
+    /// Resolved `makensis` executable.
+    nsis_tool: ?[]const u8 = null,
+    /// Resolved `NSISDIR`.
+    nsis_data_dir: ?[]const u8 = null,
     /// Strip the executable with `llvm-strip` before packaging.
     enable_llvm_strip: bool,
     /// Produced by `step.add` when `enable_llvm_strip` is set.
@@ -384,7 +415,11 @@ pub const Settings = struct {
             .install_scope = nsis_options.install_scope,
             .shortcuts = nsis_options.shortcuts,
             .launch_app = nsis_options.launch_app,
-            .makensis = if (nsis_options.makensis) |tool| b.dupe(tool) else null,
+            .source = switch (nsis_options.source.kind) {
+                .bundled => .bundled,
+                .system => .system,
+                .dir => .dir(b.dupe(nsis_options.source.path.?)),
+            },
         } else null;
 
         const deb = if (options.formats.deb) |deb_options| blk: {
@@ -547,8 +582,16 @@ test "format matches capabilities" {
 test "nsis defaults" {
     const options: NsisOptions = .{};
 
+    try std.testing.expectEqual(NsisSource.Kind.bundled, options.source.kind);
     try std.testing.expectEqual(NsisOptions.InstallScope.current_user, options.install_scope);
     try std.testing.expect(options.shortcuts.start_menu);
     try std.testing.expect(!options.shortcuts.desktop);
     try std.testing.expect(options.launch_app);
+}
+
+test "nsis toolchain source variants" {
+    try std.testing.expectEqual(NsisSource.Kind.system, (NsisOptions{ .source = .system }).source.kind);
+
+    const custom = NsisOptions{ .source = .dir("/opt/nsis") };
+    try std.testing.expectEqualStrings("/opt/nsis", custom.source.path.?);
 }

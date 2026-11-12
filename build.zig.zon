@@ -4,9 +4,35 @@
     .fingerprint = 0xe92be97a61f22f36,
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
-        .nsis = .{
-            .url = "https://github.com/KercyDing/zig-bundle/releases/download/nsis-3.13/nsis-3.13.zip",
-            .hash = "N-V-__8AAHH4bADGwT5kk16hQEobaBMcIZ6-ugAZwiR48PiZ",
+        .nsis_linux_x64 = .{
+            .url = "https://github.com/KercyDing/zig-bundle/releases/download/nsis-3.13/nsis-3.13-linux-x64.tar.gz",
+            .hash = "N-V-__8AAJbliQD8-8MF4WXgxF-VtcDAlookZxEuFy7p9qw0",
+            .lazy = true,
+        },
+        .nsis_linux_arm64 = .{
+            .url = "https://github.com/KercyDing/zig-bundle/releases/download/nsis-3.13/nsis-3.13-linux-arm64.tar.gz",
+            .hash = "N-V-__8AAP50iQBpLXlEr-1BsStWn10mOF_JMlf0it2nVWIo",
+            .lazy = true,
+        },
+        .nsis_macos_x64 = .{
+            .url = "https://github.com/KercyDing/zig-bundle/releases/download/nsis-3.13/nsis-3.13-macos-x64.tar.gz",
+            .hash = "N-V-__8AAMfziQBA1zpF3PPs-vzOn8fr3ZKfzg57sYxLMlHh",
+            .lazy = true,
+        },
+        .nsis_macos_arm64 = .{
+            .url = "https://github.com/KercyDing/zig-bundle/releases/download/nsis-3.13/nsis-3.13-macos-arm64.tar.gz",
+            .hash = "N-V-__8AAKCmiQDr3r2-97qc_vPm2NbBLClmltGeQbYNNnMj",
+            .lazy = true,
+        },
+        .nsis_windows_x64 = .{
+            .url = "https://github.com/KercyDing/zig-bundle/releases/download/nsis-3.13/nsis-3.13-windows-x64.tar.gz",
+            .hash = "N-V-__8AAIbhnQAaicRDcMR2jq4XtM_wSLy7tLGcLqWV_oQ5",
+            .lazy = true,
+        },
+        .nsis_windows_arm64 = .{
+            .url = "https://github.com/KercyDing/zig-bundle/releases/download/nsis-3.13/nsis-3.13-windows-arm64.tar.gz",
+            .hash = "N-V-__8AAIbhnQAaicRDcMR2jq4XtM_wSLy7tLGcLqWV_oQ5",
+            .lazy = true,
         },
     },
     .paths = .{

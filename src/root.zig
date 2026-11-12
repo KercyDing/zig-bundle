@@ -23,11 +23,6 @@ const step = @import("step.zig");
 const tar_gz = @import("bundle/common/tar_gz.zig");
 const zip = @import("bundle/common/zip.zig");
 
-/// Registers the bundle build step.
-pub fn addWithBuildZig(b: *std.Build, options: Options, comptime build_zig: type) *BundleStep {
-    return step.add(b, options, build_zig);
-}
-
 /// Application metadata shared by every output format.
 pub const App = settings.App;
 /// AppImage options.
@@ -52,12 +47,18 @@ pub const Options = settings.Options;
 pub const Resource = settings.Resource;
 /// RPM package options.
 pub const RpmOptions = settings.RpmOptions;
+/// Source of the NSIS toolchain.
+pub const NsisSource = settings.NsisSource;
 /// Windows installer options.
 pub const NsisOptions = settings.NsisOptions;
 /// tar.gz archive options.
 pub const TarGzOptions = settings.TarGzOptions;
 /// ZIP archive options.
 pub const ZipOptions = settings.ZipOptions;
+/// Registers the bundle build step.
+pub fn addWithBuildZig(b: *std.Build, options: Options, comptime build_zig: type) *BundleStep {
+    return step.add(b, options, build_zig);
+}
 /// Build step that produces the configured bundles.
 pub const BundleStep = step.BundleStep;
 

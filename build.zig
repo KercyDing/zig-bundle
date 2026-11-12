@@ -36,6 +36,8 @@ pub const Options = root.Options;
 pub const Resource = root.Resource;
 /// RPM package options.
 pub const RpmOptions = root.RpmOptions;
+/// Source of the NSIS toolchain.
+pub const NsisSource = root.NsisSource;
 /// Windows installer options.
 pub const NsisOptions = root.NsisOptions;
 /// tar.gz archive options.

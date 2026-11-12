@@ -25,17 +25,7 @@ pub const BundleStep = struct {
 
 /// Registers a bundle step and returns it. Depend on `bundled.step` to run it.
 /// Formats and target compatibility are validated before the build starts.
-pub fn add(b: *std.Build, initial_options: Options, comptime build_zig: type) *BundleStep {
-    var options = initial_options;
-    if (options.formats.nsis) |*nsis| {
-        if (nsis.makensis == null and builtin.os.tag == .windows) {
-            const lib = b.dependencyFromBuildZig(build_zig, .{});
-            if (lib.builder.lazyDependency("nsis", .{})) |dep| {
-                nsis.makensis = dep.path("nsis-3.13/makensis.exe").getPath(lib.builder);
-            }
-        }
-    }
-
+pub fn add(b: *std.Build, options: Options, comptime build_zig: type) *BundleStep {
     const self = b.allocator.create(BundleStep) catch @panic("OOM");
     self.* = .{
         .step = std.Build.Step.init(.{
@@ -46,6 +36,29 @@ pub fn add(b: *std.Build, initial_options: Options, comptime build_zig: type) *B
         }),
         .settings = settings.Settings.init(b, options),
     };
+
+    if (self.settings.nsis) |nsis| {
+        switch (nsis.source.kind) {
+            .bundled => if (nsisDependencyName()) |name| {
+                const lib = b.dependencyFromBuildZig(build_zig, .{});
+                if (lib.builder.lazyDependency(name, .{})) |dep| {
+                    if (builtin.os.tag == .windows) {
+                        self.settings.nsis_tool = dep.path("makensis.exe").getPath(lib.builder);
+                        self.settings.nsis_data_dir = std.fs.path.dirname(self.settings.nsis_tool.?) orelse null;
+                    } else {
+                        self.settings.nsis_tool = dep.path("makensis").getPath(lib.builder);
+                    }
+                }
+            },
+            .system => {},
+            .dir => {
+                const dir = nsis.source.path.?;
+                const tool_name = if (builtin.os.tag == .windows) "makensis.exe" else "makensis";
+                self.settings.nsis_tool = std.fs.path.join(b.allocator, &.{ dir, tool_name }) catch @panic("OOM");
+                self.settings.nsis_data_dir = b.dupe(dir);
+            },
+        }
+    }
 
     self.step.dependOn(&options.input.executable.step);
     for (self.settings.resources) |resource| {
@@ -103,6 +116,27 @@ fn findLlvmStrip(b: *std.Build) ?[]const u8 {
     }
 
     return null;
+}
+
+fn nsisDependencyName() ?[]const u8 {
+    return switch (builtin.os.tag) {
+        .windows => switch (builtin.cpu.arch) {
+            .x86_64 => "nsis_windows_x64",
+            .aarch64 => "nsis_windows_arm64",
+            else => null,
+        },
+        .linux => switch (builtin.cpu.arch) {
+            .x86_64 => "nsis_linux_x64",
+            .aarch64 => "nsis_linux_arm64",
+            else => null,
+        },
+        .macos => switch (builtin.cpu.arch) {
+            .x86_64 => "nsis_macos_x64",
+            .aarch64 => "nsis_macos_arm64",
+            else => null,
+        },
+        else => null,
+    };
 }
 
 fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) anyerror!void {

@@ -337,10 +337,11 @@ pub fn project(
             .payload = payload.entries.items,
             .icon_path = setup_icon_path,
             .icon_name = icon_name,
-            .makensis = options.makensis,
+            .makensis = config.nsis_tool,
+            .nsis_dir = config.nsis_data_dir,
         }, dir, path, arena) catch |err| switch (err) {
             error.MakensisNotFound => return step.fail(
-                "makensis not found; install NSIS or set nsis.makensis",
+                "makensis not found; configure nsis.nsis_dir",
                 .{},
             ),
             else => return step.fail("failed to create '{s}': {t}", .{ path, err }),

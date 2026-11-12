@@ -22,6 +22,7 @@ pub const Config = struct {
     icon_path: ?[]const u8 = null,
     icon_name: ?[]const u8 = null,
     makensis: ?[]const u8 = null,
+    nsis_dir: ?[]const u8 = null,
 };
 
 /// Builds the installer with `makensis`.
@@ -62,6 +63,13 @@ pub fn bundle(
 
     Io.Dir.cwd().deleteFile(io, output_path) catch {};
 
+    var child_environment: ?std.process.Environ.Map = null;
+    defer if (child_environment) |*environment| environment.deinit();
+    if (config.nsis_dir) |nsis_dir| {
+        child_environment = try env_map.clone(allocator);
+        try child_environment.?.put("NSISDIR", nsis_dir);
+    }
+
     var child = std.process.spawn(io, .{
         .argv = &.{
             tool,
@@ -73,6 +81,7 @@ pub fn bundle(
             "installer.nsi",
         },
         .cwd = .{ .path = staging },
+        .environ_map = if (child_environment) |*environment| environment else null,
         .stdin = .ignore,
     }) catch |err| switch (err) {
         error.FileNotFound => return error.MakensisNotFound,
