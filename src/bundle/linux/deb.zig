@@ -38,6 +38,16 @@ pub const Options = struct {
     conf_files: []const []const u8 = &.{},
 };
 
+/// Resolved additional file installed by the package.
+pub const Asset = struct {
+    /// Host path of the source file or directory.
+    source_path: []const u8,
+    /// Destination relative to the filesystem root.
+    dest: []const u8,
+    /// Permission bits for files; directories always use `0o755`.
+    mode: u32 = 0o644,
+};
+
 pub const Config = struct {
     name: []const u8,
     identifier: []const u8,
@@ -58,6 +68,8 @@ pub const Config = struct {
     license_path: ?[]const u8 = null,
     /// Number of leading license file lines to skip.
     license_skip_lines: usize = 0,
+    /// Additional files installed verbatim.
+    assets: []const Asset = &.{},
     /// Entry timestamp in seconds since the Unix epoch.
     mtime: u64 = tar_gz.default_mtime,
     options: Options = .{},
@@ -130,6 +142,10 @@ pub fn bundle(
         .content = .{ .bytes = desktop },
     });
 
+    for (config.assets) |asset| {
+        try addAsset(io, allocator, asset, &data_items);
+    }
+
     const package = try toKebabCase(allocator, config.name);
     const maintainer = config.maintainer orelse return error.MissingMaintainer;
     const doc_dir = try std.fmt.allocPrint(allocator, "usr/share/doc/{s}", .{package});
@@ -182,11 +198,15 @@ pub fn bundle(
     }
 
     const control = try renderControl(allocator, config, package, maintainer, arch, installed_size);
+    const conffiles = try renderConffiles(allocator, config.options.conf_files, data_items.items);
 
     var control_items: std.ArrayList(tar_gz.Item) = .empty;
     defer control_items.deinit(allocator);
     try control_items.append(allocator, .{ .path = "control", .kind = .file, .mode = 0o644, .content = .{ .bytes = control } });
     try control_items.append(allocator, .{ .path = "md5sums", .kind = .file, .mode = 0o644, .content = .{ .bytes = md5sums.written() } });
+    if (conffiles) |bytes| {
+        try control_items.append(allocator, .{ .path = "conffiles", .kind = .file, .mode = 0o644, .content = .{ .bytes = bytes } });
+    }
 
     const control_path = try std.fmt.allocPrint(allocator, "{s}/{s}.control.tar.gz", .{ output_dir, package_basename });
     const data_path = try std.fmt.allocPrint(allocator, "{s}/{s}.data.tar.gz", .{ output_dir, package_basename });
@@ -239,6 +259,89 @@ fn addParentDirectories(
     }
 }
 
+fn validateAssetPath(path: []const u8) !void {
+    if (path.len == 0) return error.InvalidAssetDestination;
+
+    var parts = std.mem.splitScalar(u8, path, '/');
+    while (parts.next()) |part| {
+        if (part.len == 0) return error.InvalidAssetDestination;
+        if (std.mem.eql(u8, part, ".") or std.mem.eql(u8, part, "..")) {
+            return error.InvalidAssetDestination;
+        }
+    }
+}
+
+fn normalizeAssetDestination(allocator: std.mem.Allocator, dest: []const u8) ![]const u8 {
+    const trimmed = std.mem.trim(u8, dest, "/\\");
+    if (trimmed.len == 0) return error.InvalidAssetDestination;
+
+    const normalized = try allocator.alloc(u8, trimmed.len);
+    for (trimmed, normalized) |c, *out| out.* = if (c == '\\') '/' else c;
+    try validateAssetPath(normalized);
+    return normalized;
+}
+
+fn addAsset(
+    io: Io,
+    allocator: std.mem.Allocator,
+    asset: Asset,
+    items: *std.ArrayList(tar_gz.Item),
+) !void {
+    const source = std.mem.trimEnd(u8, asset.source_path, "/\\");
+    const stat = try Io.Dir.cwd().statFile(io, source, .{});
+    const dest_is_directory = std.mem.endsWith(u8, asset.dest, "/") or
+        std.mem.endsWith(u8, asset.dest, "\\");
+    const dest = try normalizeAssetDestination(allocator, asset.dest);
+
+    switch (stat.kind) {
+        .file => {
+            const path = if (dest_is_directory)
+                try std.fmt.allocPrint(allocator, "{s}/{s}", .{ dest, std.fs.path.basename(source) })
+            else
+                dest;
+            if (dest_is_directory) try validateAssetPath(path);
+            try items.append(allocator, .{
+                .path = path,
+                .kind = .file,
+                .mode = asset.mode,
+                .content = .{ .file = source },
+            });
+        },
+        .directory => try addAssetDirectory(io, allocator, source, dest, asset.mode, items),
+        else => return error.UnsupportedAssetType,
+    }
+}
+
+fn addAssetDirectory(
+    io: Io,
+    allocator: std.mem.Allocator,
+    source: []const u8,
+    dest: []const u8,
+    mode: u32,
+    items: *std.ArrayList(tar_gz.Item),
+) !void {
+    try items.append(allocator, .{ .path = dest, .kind = .dir, .mode = 0o755 });
+
+    var dir = try Io.Dir.openDirAbsolute(io, source, .{ .iterate = true });
+    defer dir.close(io);
+
+    var iterator = dir.iterate();
+    while (try iterator.next(io)) |entry| {
+        const child_source = try std.fs.path.join(allocator, &.{ source, entry.name });
+        const child_dest = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ dest, entry.name });
+        switch (entry.kind) {
+            .directory => try addAssetDirectory(io, allocator, child_source, child_dest, mode, items),
+            .file => try items.append(allocator, .{
+                .path = child_dest,
+                .kind = .file,
+                .mode = mode,
+                .content = .{ .file = child_source },
+            }),
+            else => return error.UnsupportedAssetType,
+        }
+    }
+}
+
 fn loadLicense(io: Io, allocator: std.mem.Allocator, config: Config) !?[]const u8 {
     const path = config.license_path orelse return null;
     const source = try Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(16 * 1024 * 1024));
@@ -253,6 +356,44 @@ fn loadLicense(io: Io, allocator: std.mem.Allocator, config: Config) !?[]const u
         start = newline + 1;
     }
     return source[start..];
+}
+
+fn renderConffiles(
+    allocator: std.mem.Allocator,
+    configured: []const []const u8,
+    items: []const tar_gz.Item,
+) !?[]u8 {
+    var paths: std.ArrayList([]const u8) = .empty;
+    defer paths.deinit(allocator);
+
+    for (configured) |path| {
+        const normalized = std.mem.trimStart(u8, path, "/");
+        if (normalized.len == 0) continue;
+        try paths.append(allocator, try std.fmt.allocPrint(allocator, "/{s}", .{normalized}));
+    }
+
+    for (items) |item| {
+        if (item.kind != .file) continue;
+        if (!std.mem.startsWith(u8, item.path, "etc/")) continue;
+        try paths.append(allocator, try std.fmt.allocPrint(allocator, "/{s}", .{item.path}));
+    }
+
+    if (paths.items.len == 0) return null;
+
+    std.mem.sort([]const u8, paths.items, {}, struct {
+        fn lessThan(_: void, lhs: []const u8, rhs: []const u8) bool {
+            return std.mem.lessThan(u8, lhs, rhs);
+        }
+    }.lessThan);
+
+    var output: std.ArrayList(u8) = .empty;
+    errdefer output.deinit(allocator);
+    for (paths.items, 0..) |path, index| {
+        if (index > 0 and std.mem.eql(u8, path, paths.items[index - 1])) continue;
+        try output.appendSlice(allocator, path);
+        try output.append(allocator, '\n');
+    }
+    return try output.toOwnedSlice(allocator);
 }
 
 fn md5Bytes(bytes: []const u8) [16]u8 {
@@ -658,6 +799,37 @@ test "writeWrapped keeps lines within 79 columns" {
         if (line.len == 0) continue;
         try std.testing.expect(line.len <= 79);
     }
+}
+
+test "conffiles are sorted and deduplicated" {
+    const items = [_]tar_gz.Item{
+        .{ .path = "etc/z.conf", .kind = .file },
+        .{ .path = "usr/bin/app", .kind = .file },
+        .{ .path = "etc/app.conf", .kind = .file },
+    };
+
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+
+    const conffiles = (try renderConffiles(arena_state.allocator(), &.{ "etc/app.conf", "/opt/app.conf" }, &items)).?;
+    try std.testing.expectEqualStrings(
+        "/etc/app.conf\n/etc/z.conf\n/opt/app.conf\n",
+        conffiles,
+    );
+}
+
+test "asset paths reject traversal" {
+    try std.testing.expectError(error.InvalidAssetDestination, validateAssetPath("../etc/passwd"));
+    try std.testing.expectError(error.InvalidAssetDestination, validateAssetPath("usr//bin"));
+    try std.testing.expectError(error.InvalidAssetDestination, validateAssetPath(""));
+    try validateAssetPath("usr/share/app/file.txt");
+}
+
+test "asset destination normalizes separators" {
+    const dest = try normalizeAssetDestination(std.testing.allocator, "usr\\share\\app\\");
+    defer std.testing.allocator.free(dest);
+
+    try std.testing.expectEqualStrings("usr/share/app", dest);
 }
 
 test "control relationship fields" {

@@ -106,6 +106,15 @@ pub fn project(
         else
             null;
 
+        const deb_assets = try arena.alloc(deb.Asset, options.assets.len);
+        for (options.assets, deb_assets) |asset, *dest| {
+            dest.* = .{
+                .source_path = try staging.resolveLazyPath(b, step, asset.source, arena),
+                .dest = asset.dest,
+                .mode = asset.mode,
+            };
+        }
+
         var file = try output.create(io, path);
         defer file.close(io);
 
@@ -123,6 +132,7 @@ pub fn project(
             .changelog_path = changelog_path,
             .license_path = license_path,
             .license_skip_lines = options.license_file_skip_lines,
+            .assets = deb_assets,
             .mtime = mtime,
             .options = .{
                 .depends = options.depends,
@@ -138,6 +148,7 @@ pub fn project(
                 .priority = options.priority,
                 .homepage = options.homepage,
                 .multi_arch = if (options.multi_arch) |multi_arch| @tagName(multi_arch) else null,
+                .conf_files = options.conf_files,
             },
         }, deb_arch.?, dir, package_basename, arena) catch |err| {
             return step.fail("failed to create '{s}': {t}", .{ path, err });

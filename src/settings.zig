@@ -103,6 +103,17 @@ pub const TarGzOptions = struct {
     level: u4 = 6,
 };
 
+/// Additional file installed by a Debian package.
+pub const Asset = struct {
+    /// File or directory copied into the package.
+    source: std.Build.LazyPath,
+    /// Destination relative to the filesystem root. A trailing `/` copies the
+    /// source basename into that directory.
+    dest: []const u8,
+    /// Permission bits for files; directories always use `0o755`.
+    mode: u32 = 0o644,
+};
+
 /// Debian multi-arch field values.
 pub const MultiArch = enum {
     /// Several architectures of the package can be installed simultaneously.
@@ -153,6 +164,11 @@ pub const DebOptions = struct {
     license_file: ?std.Build.LazyPath = null,
     /// Number of leading license file lines to skip.
     license_file_skip_lines: usize = 0,
+    /// Additional files installed by the package.
+    assets: []const Asset = &.{},
+    /// Configuration files outside `/etc`; files under `/etc` are detected
+    /// automatically.
+    conf_files: []const []const u8 = &.{},
 };
 
 /// Windows installer options.
@@ -276,6 +292,14 @@ pub const Settings = struct {
         }
 
         const deb = if (options.formats.deb) |deb_options| blk: {
+            const assets = b.allocator.alloc(Asset, deb_options.assets.len) catch @panic("OOM");
+            for (deb_options.assets, assets) |asset, *dest| {
+                dest.* = .{
+                    .source = asset.source,
+                    .dest = b.dupe(asset.dest),
+                    .mode = asset.mode,
+                };
+            }
             break :blk DebOptions{
                 .depends = dupeStrings(b, deb_options.depends),
                 .pre_depends = dupeStrings(b, deb_options.pre_depends),
@@ -296,6 +320,8 @@ pub const Settings = struct {
                 .changelog = deb_options.changelog,
                 .license_file = deb_options.license_file,
                 .license_file_skip_lines = deb_options.license_file_skip_lines,
+                .assets = assets,
+                .conf_files = dupeStrings(b, deb_options.conf_files),
             };
         } else null;
 

@@ -10,6 +10,8 @@ pub const add = root.add;
 
 /// Application metadata shared by every output format.
 pub const App = root.App;
+/// Additional file installed by a Debian package.
+pub const Asset = root.Asset;
 /// Build step that produces the configured bundles.
 pub const BundleStep = root.BundleStep;
 /// Compression algorithm used for ZIP entries.

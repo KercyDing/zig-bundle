@@ -49,6 +49,7 @@ pub fn add(b: *std.Build, options: Options) *BundleStep {
     if (self.settings.deb) |deb| {
         if (deb.changelog) |changelog| changelog.addStepDependencies(&self.step);
         if (deb.license_file) |license| license.addStepDependencies(&self.step);
+        for (deb.assets) |asset| asset.source.addStepDependencies(&self.step);
     }
 
     if (self.settings.setup_exe != null) {

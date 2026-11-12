@@ -21,6 +21,8 @@ const zip = @import("bundle/common/zip.zig");
 
 /// Application metadata shared by every output format.
 pub const App = settings.App;
+/// Additional file installed by a Debian package.
+pub const Asset = settings.Asset;
 /// Compression algorithm used for ZIP entries.
 pub const Compression = settings.Compression;
 /// Debian package options.
