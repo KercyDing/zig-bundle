@@ -7,6 +7,10 @@
         .bundle = .{
             .path = "../",
         },
+        .nsis = .{
+            .url = "https://github.com/KercyDing/zig-bundle/releases/download/nsis-3.13/nsis-3.13.zip",
+            .hash = "N-V-__8AAHH4bADGwT5kk16hQEobaBMcIZ6-ugAZwiR48PiZ",
+        },
     },
     .paths = .{
         "build.zig",

@@ -1,3 +1,4 @@
+const builtin = @import("builtin");
 const std = @import("std");
 
 const bundle = @import("bundle");
@@ -7,6 +8,11 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const format = b.option(bundle.Format, "format", "Bundle format") orelse .zip;
     const app_version = b.option([]const u8, "app-version", "Application version") orelse "0.1.0";
+
+    const makensis: ?[]const u8 = if (format == .nsis and builtin.os.tag == .windows) blk: {
+        const nsis = b.lazyDependency("nsis", .{}) orelse return;
+        break :blk nsis.path("nsis-3.13/makensis.exe").getPath(b);
+    } else null;
 
     const exe = b.addExecutable(.{
         .name = "hello-bundle",
@@ -32,6 +38,7 @@ pub fn build(b: *std.Build) void {
         } },
         .nsis => .{ .nsis = .{
             .shortcuts = .{ .start_menu = true, .desktop = true },
+            .makensis = makensis,
         } },
     };
 
