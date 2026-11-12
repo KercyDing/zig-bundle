@@ -31,6 +31,8 @@ pub const Format = settings.Format;
 pub const Formats = settings.Formats;
 /// Executable and additional files to bundle.
 pub const Input = settings.Input;
+/// Debian multi-arch field values.
+pub const MultiArch = settings.MultiArch;
 /// Configuration accepted by `add`.
 pub const Options = settings.Options;
 /// File or directory copied into the bundle.

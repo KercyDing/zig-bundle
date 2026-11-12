@@ -22,6 +22,8 @@ pub const Format = root.Format;
 pub const Formats = root.Formats;
 /// Executable and additional files to bundle.
 pub const Input = root.Input;
+/// Debian multi-arch field values.
+pub const MultiArch = root.MultiArch;
 /// Configuration accepted by `add`.
 pub const Options = root.Options;
 /// File or directory copied into the bundle.

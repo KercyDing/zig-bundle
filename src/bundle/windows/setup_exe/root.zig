@@ -102,7 +102,7 @@ pub fn bundle(
     try writer.writeAll(manifest.written());
 
     const payload_offset = out.logicalPos();
-    try tar_gz.writeItemsTo(io, writer, items.items, compression_level);
+    try tar_gz.writeItemsTo(io, writer, items.items, tar_gz.default_mtime, compression_level);
     try writer.flush();
 
     const payload_size = out.logicalPos() - payload_offset;

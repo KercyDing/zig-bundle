@@ -21,9 +21,17 @@ pub const App = struct {
     identifier: []const u8,
     /// Semantic version, e.g. `"1.2.3"`.
     version: []const u8,
-    /// Package maintainer. Falls back to the identifier.
+    /// Publisher or maintainer. Used as the Debian maintainer when
+    /// `deb.maintainer` is unset; that value must be in `Name <email>` form.
+    /// Other formats use it as-is.
     publisher: ?[]const u8 = null,
-    /// Short description used by package metadata.
+    /// Copyright notice used by package metadata, e.g.
+    /// `"Copyright 2026 Example <example@example.com>"`.
+    copyright: ?[]const u8 = null,
+    /// License identifier, e.g. `"MIT"`.
+    license: ?[]const u8 = null,
+    /// Short description used by package metadata. For Debian, the first line
+    /// is the synopsis and the remaining lines form the extended description.
     description: ?[]const u8 = null,
 };
 
@@ -95,14 +103,56 @@ pub const TarGzOptions = struct {
     level: u4 = 6,
 };
 
+/// Debian multi-arch field values.
+pub const MultiArch = enum {
+    /// Several architectures of the package can be installed simultaneously.
+    same,
+    /// The package can satisfy dependencies of other architectures.
+    foreign,
+};
+
 /// Debian package options.
 pub const DebOptions = struct {
     /// Debian package dependencies, e.g. `"libc6 (>= 2.31)"`.
     depends: []const []const u8 = &.{},
+    /// Pre-dependencies.
+    pre_depends: []const []const u8 = &.{},
+    /// Recommended packages.
+    recommends: []const []const u8 = &.{},
+    /// Suggested packages.
+    suggests: []const []const u8 = &.{},
+    /// Packages enhanced by this one.
+    enhances: []const []const u8 = &.{},
+    /// Conflicting packages.
+    conflicts: []const []const u8 = &.{},
+    /// Packages broken by this one.
+    breaks: []const []const u8 = &.{},
+    /// Packages replaced by this one.
+    replaces: []const []const u8 = &.{},
+    /// Virtual packages provided by this one.
+    provides: []const []const u8 = &.{},
     /// Debian section. Defaults to `"utils"`.
     section: ?[]const u8 = "utils",
     /// Debian priority. Defaults to `"optional"`.
     priority: ?[]const u8 = "optional",
+    /// Project homepage.
+    homepage: ?[]const u8 = null,
+    /// Multi-arch field. Omitted when null.
+    multi_arch: ?MultiArch = null,
+    /// Debian revision appended to the version as `<version>-<revision>`.
+    revision: ?[]const u8 = null,
+    /// Maintainer in `Name <email>` form. Defaults to `app.publisher`.
+    maintainer: ?[]const u8 = null,
+    /// Copyright notice override for the Debian copyright file.
+    copyright: ?[]const u8 = null,
+    /// Plain-text upstream changelog installed as
+    /// `/usr/share/doc/<package>/changelog.gz`; pre-compressed `.gz` files are
+    /// kept as-is. A minimal entry is generated when null.
+    changelog: ?std.Build.LazyPath = null,
+    /// License file included in the copyright file.
+    license_file: ?std.Build.LazyPath = null,
+    /// Number of leading license file lines to skip.
+    license_file_skip_lines: usize = 0,
 };
 
 /// Windows installer options.
@@ -135,6 +185,10 @@ pub const Settings = struct {
     identifier: []const u8,
     version: []const u8,
     publisher: ?[]const u8,
+    /// Copyright notice shared by package metadata.
+    copyright: ?[]const u8,
+    /// License identifier shared by package metadata.
+    license: ?[]const u8,
     description: ?[]const u8,
     executable: *std.Build.Step.Compile,
     /// Must be obtained via `getEmittedBin()` during configuration; the compile
@@ -180,6 +234,32 @@ pub const Settings = struct {
             std.process.fatal("zig-bundle: at least one output format must be enabled", .{});
         }
 
+        if (options.formats.deb) |deb| {
+            const maintainer = deb.maintainer orelse app.publisher orelse std.process.fatal(
+                "zig-bundle: deb requires deb.maintainer or app.publisher in 'Name <email>' form",
+                .{},
+            );
+            if (!isMaintainerAddress(maintainer)) {
+                std.process.fatal(
+                    "zig-bundle: deb maintainer '{s}' must be in 'Name <email>' form",
+                    .{maintainer},
+                );
+            }
+            if (deb.revision) |revision| {
+                if (revision.len == 0) {
+                    std.process.fatal("zig-bundle: deb revision must not be empty", .{});
+                }
+                for (revision) |c| {
+                    if (!isVersionChar(c)) {
+                        std.process.fatal(
+                            "zig-bundle: deb revision '{s}' contains an invalid character",
+                            .{revision},
+                        );
+                    }
+                }
+            }
+        }
+
         const target = (options.input.executable.root_module.resolved_target orelse b.graph.host).result;
         const host = b.graph.host.result;
         if (options.formats.zip != null) validateFormat(.zip, host, target);
@@ -196,14 +276,26 @@ pub const Settings = struct {
         }
 
         const deb = if (options.formats.deb) |deb_options| blk: {
-            const depends = b.allocator.alloc([]const u8, deb_options.depends.len) catch @panic("OOM");
-            for (deb_options.depends, depends) |dependency, *dest| {
-                dest.* = b.dupe(dependency);
-            }
             break :blk DebOptions{
-                .depends = depends,
+                .depends = dupeStrings(b, deb_options.depends),
+                .pre_depends = dupeStrings(b, deb_options.pre_depends),
+                .recommends = dupeStrings(b, deb_options.recommends),
+                .suggests = dupeStrings(b, deb_options.suggests),
+                .enhances = dupeStrings(b, deb_options.enhances),
+                .conflicts = dupeStrings(b, deb_options.conflicts),
+                .breaks = dupeStrings(b, deb_options.breaks),
+                .replaces = dupeStrings(b, deb_options.replaces),
+                .provides = dupeStrings(b, deb_options.provides),
                 .section = if (deb_options.section) |section| b.dupe(section) else null,
                 .priority = if (deb_options.priority) |priority| b.dupe(priority) else null,
+                .homepage = if (deb_options.homepage) |homepage| b.dupe(homepage) else null,
+                .multi_arch = deb_options.multi_arch,
+                .revision = if (deb_options.revision) |revision| b.dupe(revision) else null,
+                .maintainer = if (deb_options.maintainer) |maintainer| b.dupe(maintainer) else null,
+                .copyright = if (deb_options.copyright) |copyright| b.dupe(copyright) else null,
+                .changelog = deb_options.changelog,
+                .license_file = deb_options.license_file,
+                .license_file_skip_lines = deb_options.license_file_skip_lines,
             };
         } else null;
 
@@ -212,6 +304,8 @@ pub const Settings = struct {
             .identifier = b.dupe(app.identifier),
             .version = b.dupe(app.version),
             .publisher = if (app.publisher) |publisher| b.dupe(publisher) else null,
+            .copyright = if (app.copyright) |copyright| b.dupe(copyright) else null,
+            .license = if (app.license) |license| b.dupe(license) else null,
             .description = if (app.description) |description| b.dupe(description) else null,
             .executable = options.input.executable,
             .executable_path = options.input.executable.getEmittedBin(),
@@ -231,6 +325,29 @@ pub const Settings = struct {
         };
     }
 };
+
+fn dupeStrings(b: *std.Build, values: []const []const u8) []const []const u8 {
+    const result = b.allocator.alloc([]const u8, values.len) catch @panic("OOM");
+    for (values, result) |value, *dest| dest.* = b.dupe(value);
+    return result;
+}
+
+fn isVersionChar(c: u8) bool {
+    return std.ascii.isAlphanumeric(c) or c == '.' or c == '+' or c == '~';
+}
+
+fn isMaintainerAddress(value: []const u8) bool {
+    const open = std.mem.indexOfScalar(u8, value, '<') orelse return false;
+    const close = std.mem.lastIndexOfScalar(u8, value, '>') orelse return false;
+    if (close != value.len - 1 or close <= open) return false;
+
+    const name = std.mem.trim(u8, value[0..open], " \t");
+    const email = value[open + 1 .. close];
+    if (name.len == 0 or email.len == 0) return false;
+
+    const at = std.mem.indexOfScalar(u8, email, '@') orelse return false;
+    return at > 0 and at + 1 < email.len and std.mem.indexOfScalar(u8, email[at + 1 ..], '.') != null;
+}
 
 fn validateFormat(format: capabilities.Format, host: std.Target, target: std.Target) void {
     capabilities.check(format, host.os.tag, host.cpu.arch, target.os.tag, target.cpu.arch) catch |err| switch (err) {
@@ -262,6 +379,14 @@ test "options default to a ZIP bundle" {
     try std.testing.expect(options.formats.tar_gz == null);
     try std.testing.expect(options.formats.deb == null);
     try std.testing.expect(options.formats.setup_exe == null);
+}
+
+test "maintainer address validation" {
+    try std.testing.expect(isMaintainerAddress("Example <example@example.com>"));
+    try std.testing.expect(!isMaintainerAddress("Example"));
+    try std.testing.expect(!isMaintainerAddress("Example <example>"));
+    try std.testing.expect(!isMaintainerAddress("<example@example.com>"));
+    try std.testing.expect(!isMaintainerAddress("Example <example@example.com> "));
 }
 
 test "deb options have metadata defaults" {

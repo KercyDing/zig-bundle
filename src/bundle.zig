@@ -21,6 +21,7 @@ pub fn project(
     config: *const Settings,
 ) ![]const []const u8 {
     const io = b.graph.io;
+    const mtime = tar_gz.parseSourceDateEpoch(b.graph.environ_map.get("SOURCE_DATE_EPOCH"));
 
     var arena_state = std.heap.ArenaAllocator.init(b.allocator);
     defer arena_state.deinit();
@@ -70,7 +71,7 @@ pub fn project(
         const path = try output.artifactPath(io, arena, output_root, .tar_gz, config, target_name);
         var file = try output.create(io, path);
         defer file.close(io);
-        tar_gz.write(io, file, payload.entries.items, .{ .level = options.level }) catch |err| {
+        tar_gz.write(io, file, payload.entries.items, .{ .level = options.level, .mtime = mtime }) catch |err| {
             return step.fail("failed to create '{s}': {t}", .{ path, err });
         };
         try artifacts.append(b.allocator, b.dupe(path));
@@ -79,9 +80,14 @@ pub fn project(
     if (config.deb) |options| {
         const dir = try output.formatDir(io, arena, output_root, .deb);
 
+        const deb_version = if (options.revision) |revision|
+            try std.fmt.allocPrint(arena, "{s}-{s}", .{ config.version, revision })
+        else
+            config.version;
+
         const package_basename = try std.fmt.allocPrint(arena, "{s}_{s}_{s}", .{
             config.name,
-            config.version,
+            deb_version,
             deb_arch.?,
         });
         const file_name = try std.fmt.allocPrint(arena, "{s}{s}", .{
@@ -90,22 +96,48 @@ pub fn project(
         });
         const path = try std.fs.path.join(arena, &.{ dir, file_name });
 
+        const changelog_path: ?[]const u8 = if (options.changelog) |changelog|
+            try staging.resolveLazyPath(b, step, changelog, arena)
+        else
+            null;
+
+        const license_path: ?[]const u8 = if (options.license_file) |license|
+            try staging.resolveLazyPath(b, step, license, arena)
+        else
+            null;
+
         var file = try output.create(io, path);
         defer file.close(io);
 
         deb.bundle(io, file, .{
             .name = config.name,
             .identifier = config.identifier,
-            .version = config.version,
-            .publisher = config.publisher,
+            .version = deb_version,
+            .maintainer = options.maintainer orelse config.publisher,
             .description = config.description,
+            .license = config.license,
+            .copyright = options.copyright orelse config.copyright,
             .executable_name = config.executable.out_filename,
             .payload = payload.entries.items,
             .icons = png_icons,
+            .changelog_path = changelog_path,
+            .license_path = license_path,
+            .license_skip_lines = options.license_file_skip_lines,
+            .mtime = mtime,
             .options = .{
                 .depends = options.depends,
+                .pre_depends = options.pre_depends,
+                .recommends = options.recommends,
+                .suggests = options.suggests,
+                .enhances = options.enhances,
+                .conflicts = options.conflicts,
+                .breaks = options.breaks,
+                .replaces = options.replaces,
+                .provides = options.provides,
                 .section = options.section,
                 .priority = options.priority,
+                .homepage = options.homepage,
+                .multi_arch = if (options.multi_arch) |multi_arch| @tagName(multi_arch) else null,
             },
         }, deb_arch.?, dir, package_basename, arena) catch |err| {
             return step.fail("failed to create '{s}': {t}", .{ path, err });

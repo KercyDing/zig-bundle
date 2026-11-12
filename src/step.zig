@@ -46,6 +46,10 @@ pub fn add(b: *std.Build, options: Options) *BundleStep {
     if (self.settings.icons.ico) |icon| {
         icon.addStepDependencies(&self.step);
     }
+    if (self.settings.deb) |deb| {
+        if (deb.changelog) |changelog| changelog.addStepDependencies(&self.step);
+        if (deb.license_file) |license| license.addStepDependencies(&self.step);
+    }
 
     if (self.settings.setup_exe != null) {
         const target = options.input.executable.root_module.resolved_target orelse b.graph.host;

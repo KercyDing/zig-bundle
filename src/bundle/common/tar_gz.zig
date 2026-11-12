@@ -10,7 +10,20 @@ const Entry = resources.Entry;
 pub const Options = struct {
     /// Gzip level, clamped to 1-9.
     level: u4 = 6,
+    /// Entry modification time in seconds since the Unix epoch.
+    mtime: u64 = default_mtime,
 };
+
+/// Fallback timestamp (1980-01-01) for reproducible archives. It is recent
+/// enough to avoid lintian's ancient-file warning, unlike the Unix epoch.
+pub const default_mtime: u64 = 315532800;
+
+/// Reads `SOURCE_DATE_EPOCH` for reproducible builds, falling back to
+/// `default_mtime` when unset or invalid.
+pub fn parseSourceDateEpoch(value: ?[]const u8) u64 {
+    const raw = value orelse return default_mtime;
+    return std.fmt.parseInt(u64, std.mem.trim(u8, raw, " \t\r\n"), 10) catch default_mtime;
+}
 
 pub const Kind = enum { file, dir };
 
@@ -26,9 +39,6 @@ pub const Item = struct {
         bytes: []const u8,
     };
 };
-
-// Fixed timestamp: 1970-01-01, keeps archives reproducible.
-const mtime: u64 = 0;
 
 pub fn write(
     io: Io,
@@ -48,7 +58,7 @@ pub fn write(
     for (entries) |entry| switch (entry.kind) {
         .dir => try tar_writer.writeDir(entry.archive_path, .{
             .mode = 0o755,
-            .mtime = mtime,
+            .mtime = options.mtime,
         }),
         .file => {
             var source = try Io.Dir.cwd().openFile(io, entry.source_path, .{});
@@ -58,7 +68,7 @@ pub fn write(
             var reader = source.reader(io, &read_buffer);
             try tar_writer.writeFileStream(entry.archive_path, stat.size, &reader.interface, .{
                 .mode = if (entry.executable) 0o755 else 0o644,
-                .mtime = mtime,
+                .mtime = options.mtime,
             });
         },
     };
@@ -73,11 +83,12 @@ pub fn writeItems(
     io: Io,
     file: Io.File,
     items: []const Item,
+    mtime: u64,
     level: u4,
 ) !void {
     var file_buffer: [16 * 1024]u8 = undefined;
     var writer = file.writer(io, &file_buffer);
-    try writeItemsTo(io, &writer.interface, items, level);
+    try writeItemsTo(io, &writer.interface, items, mtime, level);
     try writer.interface.flush();
 }
 
@@ -86,6 +97,7 @@ pub fn writeItemsTo(
     io: Io,
     writer: *Io.Writer,
     items: []const Item,
+    mtime: u64,
     level: u4,
 ) !void {
     var history: [flate.max_window_len]u8 = undefined;
@@ -122,6 +134,23 @@ pub fn writeItemsTo(
     try compressor.finish();
 }
 
+/// Compresses arbitrary bytes into a single gzip member.
+pub fn gzipBytes(allocator: std.mem.Allocator, bytes: []const u8, level: u4) ![]u8 {
+    var allocating: std.Io.Writer.Allocating = try .initCapacity(allocator, 16 * 1024);
+    errdefer allocating.deinit();
+
+    var history: [flate.max_window_len]u8 = undefined;
+    var compressor = try flate.Compress.init(&allocating.writer, &history, .gzip, levelOptions(level));
+    try compressor.writer.writeAll(bytes);
+    try compressor.finish();
+
+    const compressed = try allocating.toOwnedSlice();
+    // The std gzip header hardcodes XFL to 0; `file` and lintian use it to
+    // detect maximum compression.
+    if (level >= 9 and compressed.len > 8) compressed[8] = 2;
+    return compressed;
+}
+
 fn levelOptions(level: u4) flate.Compress.Options {
     return switch (level) {
         0, 1 => .level_1,
@@ -134,6 +163,19 @@ fn levelOptions(level: u4) flate.Compress.Options {
         8 => .level_8,
         else => .level_9,
     };
+}
+
+test "source date epoch falls back" {
+    try std.testing.expectEqual(@as(u64, 1700000000), parseSourceDateEpoch("1700000000"));
+    try std.testing.expectEqual(default_mtime, parseSourceDateEpoch(null));
+    try std.testing.expectEqual(default_mtime, parseSourceDateEpoch("garbage"));
+}
+
+test "gzip marks maximum compression" {
+    const compressed = try gzipBytes(std.testing.allocator, "hello", 9);
+    defer std.testing.allocator.free(compressed);
+
+    try std.testing.expectEqual(@as(u8, 2), compressed[8]);
 }
 
 test "compression level clamps" {
