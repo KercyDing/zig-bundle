@@ -25,7 +25,7 @@ pub fn prepare(
     var payload: resources.Payload = .{};
     errdefer payload.deinit(arena);
 
-    const executable_path = try resolveLazyPath(b, step, config.executable_path, arena);
+    const executable_path = try resolveLazyPath(b, step, config.stripped_executable orelse config.executable_path, arena);
     payload.addFile(arena, executable_path, config.executable.out_filename, true) catch |err| {
         return step.fail("invalid executable name '{s}': {t}", .{ config.executable.out_filename, err });
     };

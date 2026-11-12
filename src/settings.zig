@@ -11,6 +11,9 @@ pub const Options = struct {
     input: Input,
     /// Formats to build. Defaults to a ZIP archive when omitted.
     formats: Formats = .{ .zip = .{} },
+    /// Strip the bundled executable with the system `llvm-strip` before
+    /// packaging. Applies to every format; requires LLVM tools on `PATH`.
+    enable_llvm_strip: bool = false,
 };
 
 /// Application metadata shared by every output format.
@@ -216,8 +219,12 @@ pub const Settings = struct {
     tar_gz: ?TarGzOptions,
     deb: ?DebOptions,
     setup_exe: ?SetupExeOptions,
+    /// Strip the executable with `llvm-strip` before packaging.
+    enable_llvm_strip: bool,
     /// Built by `step.add` when `setup_exe` is enabled.
     setup_runtime: ?std.Build.LazyPath = null,
+    /// Produced by `step.add` when `enable_llvm_strip` is set.
+    stripped_executable: ?std.Build.LazyPath = null,
 
     pub fn init(b: *std.Build, options: Options) Settings {
         const app = options.app;
@@ -348,6 +355,7 @@ pub const Settings = struct {
             .tar_gz = options.formats.tar_gz,
             .deb = deb,
             .setup_exe = options.formats.setup_exe,
+            .enable_llvm_strip = options.enable_llvm_strip,
         };
     }
 };
@@ -420,6 +428,15 @@ test "deb options have metadata defaults" {
 
     try std.testing.expectEqualStrings("utils", options.section.?);
     try std.testing.expectEqualStrings("optional", options.priority.?);
+}
+
+test "llvm strip defaults to disabled" {
+    const options: Options = .{
+        .app = .{ .name = "Default", .identifier = "com.example.default", .version = "1.0.0" },
+        .input = .{ .executable = undefined },
+    };
+
+    try std.testing.expect(!options.enable_llvm_strip);
 }
 
 test "format matches capabilities" {

@@ -51,6 +51,19 @@ pub fn add(b: *std.Build, options: Options) *BundleStep {
         if (deb.license_file) |license| license.addStepDependencies(&self.step);
         for (deb.assets) |asset| asset.source.addStepDependencies(&self.step);
     }
+    if (self.settings.enable_llvm_strip) {
+        const llvm_strip = findLlvmStrip(b) orelse std.process.fatal(
+            "zig-bundle: enable_llvm_strip requires 'llvm-strip' on PATH; install LLVM tools and retry",
+            .{},
+        );
+
+        const strip = b.addSystemCommand(&.{ llvm_strip, "--strip-all", "-o" });
+        const stripped = strip.addOutputFileArg("stripped-executable");
+        strip.addFileArg(options.input.executable.getEmittedBin());
+
+        self.step.dependOn(&strip.step);
+        self.settings.stripped_executable = stripped;
+    }
 
     if (self.settings.setup_exe != null) {
         const target = options.input.executable.root_module.resolved_target orelse b.graph.host;
@@ -77,6 +90,26 @@ pub fn add(b: *std.Build, options: Options) *BundleStep {
     }
 
     return self;
+}
+
+/// Finds `llvm-strip` without resolving symlinks: distributions commonly
+/// symlink it to `llvm-objcopy`, which selects strip behaviour from `argv[0]`.
+fn findLlvmStrip(b: *std.Build) ?[]const u8 {
+    const io = b.graph.io;
+    const path = b.graph.environ_map.get("PATH") orelse return null;
+
+    var dirs = std.mem.tokenizeScalar(u8, path, std.fs.path.delimiter);
+    while (dirs.next()) |dir| {
+        if (dir.len == 0) continue;
+
+        for ([_][]const u8{ "llvm-strip", "llvm-strip.exe" }) |name| {
+            const candidate = b.pathJoin(&.{ dir, name });
+            std.Io.Dir.cwd().access(io, candidate, .{ .execute = true }) catch continue;
+            return candidate;
+        }
+    }
+
+    return null;
 }
 
 fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) anyerror!void {
