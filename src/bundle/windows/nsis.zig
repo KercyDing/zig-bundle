@@ -171,23 +171,27 @@ fn renderScript(allocator: std.mem.Allocator, config: Config, icon_name: []const
     try writer.writeAll("  SetOutPath \"$INSTDIR\"\n  File /r \"payload\\*.*\"\n");
     try writer.writeAll("  WriteUninstaller \"$INSTDIR\\uninstall.exe\"\n");
 
-    if (config.start_menu) {
-        try writer.writeAll("  CreateShortCut \"$SMPROGRAMS\\");
-        try writeEscaped(writer, config.name);
-        try writer.writeAll(".lnk\" \"$INSTDIR\\");
-        try writeEscaped(writer, config.executable_name);
-        try writer.writeAll("\" \"\" \"$INSTDIR\\");
-        try writeEscaped(writer, if (config.icon_path != null) icon_name else config.executable_name);
-        try writer.writeAll("\" 0\n");
-    }
-    if (config.desktop) {
-        try writer.writeAll("  CreateShortCut \"$DESKTOP\\");
-        try writeEscaped(writer, config.name);
-        try writer.writeAll(".lnk\" \"$INSTDIR\\");
-        try writeEscaped(writer, config.executable_name);
-        try writer.writeAll("\" \"\" \"$INSTDIR\\");
-        try writeEscaped(writer, if (config.icon_path != null) icon_name else config.executable_name);
-        try writer.writeAll("\" 0\n");
+    if (config.start_menu or config.desktop) {
+        try writer.writeAll("  IfSilent zb_shortcuts_create zb_shortcuts_done\nzb_shortcuts_create:\n");
+        if (config.start_menu) {
+            try writer.writeAll("  CreateShortCut \"$SMPROGRAMS\\");
+            try writeEscaped(writer, config.name);
+            try writer.writeAll(".lnk\" \"$INSTDIR\\");
+            try writeEscaped(writer, config.executable_name);
+            try writer.writeAll("\" \"\" \"$INSTDIR\\");
+            try writeEscaped(writer, if (config.icon_path != null) icon_name else config.executable_name);
+            try writer.writeAll("\" 0\n");
+        }
+        if (config.desktop) {
+            try writer.writeAll("  CreateShortCut \"$DESKTOP\\");
+            try writeEscaped(writer, config.name);
+            try writer.writeAll(".lnk\" \"$INSTDIR\\");
+            try writeEscaped(writer, config.executable_name);
+            try writer.writeAll("\" \"\" \"$INSTDIR\\");
+            try writeEscaped(writer, if (config.icon_path != null) icon_name else config.executable_name);
+            try writer.writeAll("\" 0\n");
+        }
+        try writer.writeAll("  Goto zb_shortcuts_done\nzb_shortcuts_done:\n");
     }
 
     try writer.print("  WriteRegStr {s} \"{s}\" \"DisplayName\" \"", .{ root, uninstall_key_escaped });
@@ -396,4 +400,5 @@ test "nsis finish page offers shortcut choices" {
     try std.testing.expect(std.mem.indexOf(u8, script, "MUI_PAGE_CUSTOMFUNCTION_SHOW FinishPageShow") != null);
     try std.testing.expect(std.mem.indexOf(u8, script, "Create a Start Menu shortcut") != null);
     try std.testing.expect(std.mem.indexOf(u8, script, "Create a desktop shortcut") != null);
+    try std.testing.expect(std.mem.indexOf(u8, script, "IfSilent zb_shortcuts_create zb_shortcuts_done") != null);
 }
