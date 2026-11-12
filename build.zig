@@ -12,6 +12,8 @@ pub fn add(b: *std.Build, options: Options) *BundleStep {
 
 /// Application metadata shared by every output format.
 pub const App = root.App;
+/// macOS application bundle options.
+pub const AppBundleOptions = root.AppBundleOptions;
 /// AppImage options.
 pub const AppImageOptions = root.AppImageOptions;
 /// Additional file installed by a Debian package.
@@ -22,6 +24,8 @@ pub const BundleStep = root.BundleStep;
 pub const Compression = root.Compression;
 /// Debian package options.
 pub const DebOptions = root.DebOptions;
+/// macOS disk image options.
+pub const DmgOptions = root.DmgOptions;
 /// Bundle formats selectable from a build option.
 pub const Format = root.Format;
 /// Options for each enabled bundle format.

@@ -19,12 +19,16 @@ reimplemented in Zig and designed around `std.Build`.
 | `rpm` | `<prefix>/bundle/rpm/<name>-<version>-<release>.<rpm-arch>.rpm` |
 | `appimage` | `<prefix>/bundle/appimage/<name>-<version>-<arch>.AppImage` |
 | `nsis` | `<prefix>/bundle/nsis/<name>_<version>_<arch>-setup.exe` |
+| `app` | `<prefix>/bundle/app/<name>.app` |
+| `dmg` | `<prefix>/bundle/dmg/<name>_<version>_<arch>.dmg` |
 
 Archives contain the executable and configured resources at the archive root.
 Timestamps are fixed so repeated builds produce identical archives.
 `deb` and `rpm` require a Linux target and are generated natively without external tools.
 `appimage` requires a Linux host and target and invokes `appimagetool`.
 `nsis` requires a Windows target and invokes NSIS `makensis`; the bundled toolchain is used by default.
+`app` requires a macOS target and writes a native `.app` directory; it can be produced from any host.
+`dmg` requires a macOS host and target and invokes `hdiutil`.
 Format/host/target compatibility is validated while configuring the bundle, before any build steps run.
 `<prefix>` is the Zig install prefix, which defaults to `zig-out` (override with `zig build --prefix <path>`).
 
@@ -67,6 +71,8 @@ pub fn build(b: *std.Build) void {
             .shortcuts = .{ .start_menu = true, .desktop = true },
             .launch_app = true,
         } },
+        .app => .{ .app = .{} },
+        .dmg => .{ .dmg = .{} },
     };
 
     const bundled = bundle.add(b, .{
@@ -106,6 +112,8 @@ zig build bundle -Dformat=deb -Dtarget=x86_64-linux-gnu
 zig build bundle -Dformat=rpm -Dtarget=x86_64-linux-gnu
 zig build bundle -Dformat=appimage -Dtarget=x86_64-linux-gnu
 zig build bundle -Dformat=nsis -Dtarget=x86_64-windows-gnu
+zig build bundle -Dformat=app
+zig build bundle -Dformat=dmg
 ```
 
 `formats` defaults to ZIP when omitted, and `bundle.Formats` can enable several formats at once by setting multiple fields:
@@ -193,6 +201,13 @@ AppImage generates an AppDir and invokes `appimagetool`:
 The tool must be executable; AppImages distributed without FUSE are handled by
 setting `APPIMAGE_EXTRACT_AND_RUN=1` for the child process.
 
+macOS app bundles put the executable in `Contents/MacOS` and resources in
+`Contents/Resources`. `Info.plist`, `PkgInfo`, and `icon.icns` are generated
+natively; ICNS is built from the configured square PNG icons without
+`iconutil` or `sips`, so include 512x512 and 1024x1024 sources for complete
+icon coverage. DMGs contain the `.app` and an `/Applications` symlink and are
+written as UDZO images by `hdiutil`.
+
 Set top-level `.enable_llvm_strip = true` to strip the bundled executable with
 the system `llvm-strip` for every format; the build fails with an installation
 hint when the tool is not on `PATH`.
@@ -240,4 +255,6 @@ only example deb
 only example rpm
 only example appimage
 only example nsis
+only example app
+only example dmg
 ```

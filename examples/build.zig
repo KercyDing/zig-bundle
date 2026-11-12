@@ -35,6 +35,8 @@ pub fn build(b: *std.Build) void {
             .install_scope = install_scope,
             .shortcuts = .{ .start_menu = true, .desktop = true },
         } },
+        .app => .{ .app = .{} },
+        .dmg => .{ .dmg = .{} },
     };
 
     b.installArtifact(exe);

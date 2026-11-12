@@ -55,4 +55,14 @@ group example {
     [fail] Example Setup.exe package failed.
     nsis():
         cd examples && zig build bundle -Dformat=nsis -Dtarget=x86_64-windows-gnu
+
+    [help] Package the example application as a macOS app bundle
+    [fail] Example app bundle failed.
+    app():
+        cd examples && zig build bundle -Dformat=app
+
+    [help] Package the example application as a macOS DMG
+    [fail] Example DMG package failed.
+    dmg():
+        cd examples && zig build bundle -Dformat=dmg
 }

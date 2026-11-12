@@ -1,15 +1,17 @@
 //! Bundle orchestration and format dispatch.
 const std = @import("std");
 
+const app = @import("bundle/macos/app.zig");
 const appimage = @import("bundle/linux/appimage.zig");
 const capabilities = @import("capabilities.zig");
 const deb = @import("bundle/linux/deb.zig");
+const dmg = @import("bundle/macos/dmg.zig");
 const icons = @import("bundle/common/icons.zig");
+const nsis = @import("bundle/windows/nsis.zig");
 const output = @import("bundle/common/output.zig");
 const rpm = @import("bundle/linux/rpm.zig");
-const staging = @import("bundle/common/staging.zig");
 const settings = @import("settings.zig");
-const nsis = @import("bundle/windows/nsis.zig");
+const staging = @import("bundle/common/staging.zig");
 const tar_gz = @import("bundle/common/tar_gz.zig");
 const zip = @import("bundle/common/zip.zig");
 
@@ -288,6 +290,55 @@ pub fn project(
         try artifacts.append(b.allocator, b.dupe(path));
     }
 
+    if (config.app_bundle != null) {
+        const dir = try output.formatDir(io, arena, output_root, .app);
+        const app_dir = try std.fmt.allocPrint(arena, "{s}/{s}.app", .{ dir, config.name });
+
+        app.bundle(io, app_dir, .{
+            .name = config.name,
+            .identifier = config.identifier,
+            .version = config.version,
+            .executable_name = config.executable.out_filename,
+            .payload = payload.entries.items,
+            .icons = png_icons,
+        }, arena) catch |err| switch (err) {
+            error.MissingIcon => return step.fail(
+                "macOS app requires at least one square PNG icon",
+                .{},
+            ),
+            else => return step.fail("failed to create '{s}': {t}", .{ app_dir, err }),
+        };
+
+        try artifacts.append(b.allocator, b.dupe(app_dir));
+    }
+
+    if (config.dmg != null) {
+        const dir = try output.formatDir(io, arena, output_root, .dmg);
+        const file_name = try std.fmt.allocPrint(arena, "{s}_{s}_{s}.dmg", .{
+            config.name,
+            config.version,
+            @tagName(target.result.cpu.arch),
+        });
+        const path = try std.fs.path.join(arena, &.{ dir, file_name });
+
+        dmg.bundle(io, .{
+            .name = config.name,
+            .identifier = config.identifier,
+            .version = config.version,
+            .executable_name = config.executable.out_filename,
+            .payload = payload.entries.items,
+            .icons = png_icons,
+        }, dir, path, arena) catch |err| switch (err) {
+            error.HdiutilNotFound => return step.fail(
+                "hdiutil not found; dmg packaging requires a macOS host",
+                .{},
+            ),
+            else => return step.fail("failed to create '{s}': {t}", .{ path, err }),
+        };
+
+        try artifacts.append(b.allocator, b.dupe(path));
+    }
+
     if (config.nsis) |options| {
         const dir = try output.formatDir(io, arena, output_root, .nsis);
 
@@ -358,10 +409,14 @@ pub fn project(
     std.debug.print("zig-bundle: finished {d} bundle(s):\n", .{artifacts.items.len});
     for (artifacts.items) |path| {
         const stat = try Io.Dir.cwd().statFile(io, path, .{});
-        std.debug.print("  {s} ({d:.2} MiB)\n", .{
-            path,
-            @as(f64, @floatFromInt(stat.size)) / (1024.0 * 1024.0),
-        });
+        if (stat.kind == .directory) {
+            std.debug.print("  {s} (directory)\n", .{path});
+        } else {
+            std.debug.print("  {s} ({d:.2} MiB)\n", .{
+                path,
+                @as(f64, @floatFromInt(stat.size)) / (1024.0 * 1024.0),
+            });
+        }
     }
 
     return artifacts.toOwnedSlice(b.allocator);

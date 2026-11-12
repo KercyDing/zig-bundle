@@ -1,7 +1,7 @@
 //! Host and target compatibility checks for bundle formats.
 const std = @import("std");
 
-pub const Format = enum { zip, tar_gz, deb, rpm, appimage, nsis };
+pub const Format = enum { zip, tar_gz, deb, rpm, appimage, nsis, app, dmg };
 
 /// Host platform a format can be produced on.
 pub const Host = enum { any, macos, linux };
@@ -19,6 +19,8 @@ pub fn spec(format: Format) Spec {
         .deb, .rpm => .{ .target_os = .linux },
         .appimage => .{ .hosts = .linux, .target_os = .linux },
         .nsis => .{ .target_os = .windows },
+        .app => .{ .target_os = .macos },
+        .dmg => .{ .hosts = .macos, .target_os = .macos },
     };
 }
 
@@ -43,6 +45,8 @@ pub fn extension(format: Format) []const u8 {
         .appimage => ".AppImage",
         // The installer uses `-setup.exe`; the extension itself stays `.exe`.
         .nsis => ".exe",
+        .app => ".app",
+        .dmg => ".dmg",
     };
 }
 
@@ -97,6 +101,26 @@ test "nsis requires windows target" {
     try std.testing.expectError(
         error.UnsupportedTarget,
         check(.nsis, .windows, .x86_64, .linux, .x86_64),
+    );
+}
+
+test "app requires a macos target" {
+    try check(.app, .linux, .x86_64, .macos, .aarch64);
+    try std.testing.expectError(
+        error.UnsupportedTarget,
+        check(.app, .macos, .aarch64, .linux, .aarch64),
+    );
+}
+
+test "dmg requires a macos host and target" {
+    try check(.dmg, .macos, .aarch64, .macos, .x86_64);
+    try std.testing.expectError(
+        error.UnsupportedHost,
+        check(.dmg, .linux, .x86_64, .macos, .aarch64),
+    );
+    try std.testing.expectError(
+        error.UnsupportedTarget,
+        check(.dmg, .macos, .aarch64, .windows, .x86_64),
     );
 }
 

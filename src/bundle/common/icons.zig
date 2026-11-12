@@ -164,3 +164,103 @@ pub fn writeIco(
 
     try writer.interface.flush();
 }
+
+const icns_entries = [_]struct { size: u32, kind: [4]u8 }{
+    .{ .size = 16, .kind = .{ 'i', 'c', 'p', '4' } },
+    .{ .size = 32, .kind = .{ 'i', 'c', 'p', '5' } },
+    .{ .size = 64, .kind = .{ 'i', 'c', 'p', '6' } },
+    .{ .size = 128, .kind = .{ 'i', 'c', '0', '7' } },
+    .{ .size = 256, .kind = .{ 'i', 'c', '0', '8' } },
+    .{ .size = 512, .kind = .{ 'i', 'c', '0', '9' } },
+    .{ .size = 1024, .kind = .{ 'i', 'c', '1', '0' } },
+};
+
+/// Returns whether at least one PNG can be embedded in an ICNS container.
+pub fn hasIcnsSource(pngs: []const Png) bool {
+    for (pngs) |png| {
+        if (png.width != png.height) continue;
+        for (icns_entries) |entry| {
+            if (entry.size == png.width) return true;
+        }
+    }
+    return false;
+}
+
+/// Packs square PNG sources into an ICNS container. Sizes without a matching
+/// source are omitted; all sizes macOS uses are written when available.
+pub fn writeIcns(io: Io, file: Io.File, pngs: []const Png) !void {
+    var selected: [icns_entries.len]Png = undefined;
+    var sizes: [icns_entries.len]u64 = undefined;
+    var count: usize = 0;
+
+    for (icns_entries) |entry| {
+        for (pngs) |png| {
+            if (png.width != entry.size or png.height != entry.size) continue;
+
+            const stat = try Io.Dir.cwd().statFile(io, png.path, .{});
+            selected[count] = png;
+            sizes[count] = stat.size;
+            count += 1;
+            break;
+        }
+    }
+
+    if (count == 0) return error.NoUsableIcon;
+
+    var total: u64 = 8;
+    for (sizes[0..count]) |size| total += 8 + size;
+    if (total > std.math.maxInt(u32)) return error.IconTooLarge;
+
+    var out_buffer: [16 * 1024]u8 = undefined;
+    var writer = file.writer(io, &out_buffer);
+
+    var header: [8]u8 = undefined;
+    @memcpy(header[0..4], "icns");
+    std.mem.writeInt(u32, header[4..8], @intCast(total), .big);
+    try writer.interface.writeAll(&header);
+
+    for (icns_entries[0..count], selected[0..count], sizes[0..count]) |entry, png, size| {
+        var chunk_header: [8]u8 = undefined;
+        @memcpy(chunk_header[0..4], &entry.kind);
+        std.mem.writeInt(u32, chunk_header[4..8], @intCast(8 + size), .big);
+        try writer.interface.writeAll(&chunk_header);
+
+        var source = try Io.Dir.cwd().openFile(io, png.path, .{});
+        defer source.close(io);
+
+        var read_buffer: [16 * 1024]u8 = undefined;
+        var reader = source.reader(io, &read_buffer);
+        _ = try writer.interface.sendFileAll(&reader, .unlimited);
+    }
+
+    try writer.interface.flush();
+}
+
+test "icns writes big-endian chunk lengths" {
+    const io = std.testing.io;
+    const allocator = std.testing.allocator;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(io, .{ .sub_path = "icon16.png", .data = "abc" });
+
+    const png_path = try tmp.dir.realPathFileAlloc(io, "icon16.png", allocator);
+    defer allocator.free(png_path);
+
+    {
+        var file = try tmp.dir.createFile(io, "icon.icns", .{});
+        defer file.close(io);
+        try writeIcns(io, file, &.{.{ .path = png_path, .width = 16, .height = 16 }});
+    }
+
+    const bytes = try tmp.dir.readFileAlloc(io, "icon.icns", allocator, .limited(1024));
+    defer allocator.free(bytes);
+
+    try std.testing.expectEqual(@as(usize, 19), bytes.len);
+    try std.testing.expectEqualStrings("icns", bytes[0..4]);
+    try std.testing.expectEqual(@as(u32, 19), std.mem.readInt(u32, bytes[4..8], .big));
+    try std.testing.expectEqualStrings("icp4", bytes[8..12]);
+    try std.testing.expectEqual(@as(u32, 11), std.mem.readInt(u32, bytes[12..16], .big));
+    try std.testing.expectEqualStrings("abc", bytes[16..19]);
+}

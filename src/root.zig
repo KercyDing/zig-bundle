@@ -11,20 +11,24 @@
 
 const std = @import("std");
 
+const app = @import("bundle/macos/app.zig");
 const appimage = @import("bundle/linux/appimage.zig");
 const bundle = @import("bundle.zig");
 const capabilities = @import("capabilities.zig");
 const deb = @import("bundle/linux/deb.zig");
+const dmg = @import("bundle/macos/dmg.zig");
+const nsis = @import("bundle/windows/nsis.zig");
 const resources = @import("bundle/common/resources.zig");
 const rpm = @import("bundle/linux/rpm.zig");
 const settings = @import("settings.zig");
-const nsis = @import("bundle/windows/nsis.zig");
 const step = @import("step.zig");
 const tar_gz = @import("bundle/common/tar_gz.zig");
 const zip = @import("bundle/common/zip.zig");
 
 /// Application metadata shared by every output format.
 pub const App = settings.App;
+/// macOS application bundle options.
+pub const AppBundleOptions = settings.AppBundleOptions;
 /// AppImage options.
 pub const AppImageOptions = settings.AppImageOptions;
 /// Additional file installed by a Debian package.
@@ -33,6 +37,8 @@ pub const Asset = settings.Asset;
 pub const Compression = settings.Compression;
 /// Debian package options.
 pub const DebOptions = settings.DebOptions;
+/// macOS disk image options.
+pub const DmgOptions = settings.DmgOptions;
 /// Bundle formats selectable from a build option.
 pub const Format = settings.Format;
 /// Options for each enabled bundle format.
@@ -63,14 +69,16 @@ pub fn addWithBuildZig(b: *std.Build, options: Options, comptime build_zig: type
 pub const BundleStep = step.BundleStep;
 
 test {
+    std.testing.refAllDecls(app);
+    std.testing.refAllDecls(appimage);
     std.testing.refAllDecls(bundle);
     std.testing.refAllDecls(capabilities);
     std.testing.refAllDecls(deb);
+    std.testing.refAllDecls(dmg);
+    std.testing.refAllDecls(nsis);
     std.testing.refAllDecls(resources);
     std.testing.refAllDecls(rpm);
     std.testing.refAllDecls(settings);
-    std.testing.refAllDecls(appimage);
-    std.testing.refAllDecls(nsis);
     std.testing.refAllDecls(step);
     std.testing.refAllDecls(tar_gz);
     std.testing.refAllDecls(zip);
