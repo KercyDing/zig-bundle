@@ -166,6 +166,7 @@ pub fn bundle(
     }
 
     try addParentDirectories(allocator, &items);
+    try removeParentDirectories(allocator, &items);
 
     std.mem.sort(Item, items.items, {}, struct {
         fn lessThan(_: void, lhs: Item, rhs: Item) bool {
@@ -346,6 +347,33 @@ fn addParentDirectories(allocator: std.mem.Allocator, items: *std.ArrayList(Item
     for (pending.items) |path| {
         try items.append(allocator, .{ .path = path, .kind = .dir, .mode = 0o755 });
     }
+}
+
+/// RPM creates missing parent directories itself. Owned directory entries for
+/// system paths such as `/usr/bin` conflict with the `filesystem` package, so
+/// only directories without file descendants (empty directories) are kept.
+fn removeParentDirectories(allocator: std.mem.Allocator, items: *std.ArrayList(Item)) !void {
+    var parents: std.StringHashMap(void) = .init(allocator);
+    defer parents.deinit();
+
+    for (items.items) |item| {
+        if (item.kind != .file) continue;
+        var end = item.path.len;
+        while (std.mem.lastIndexOfScalar(u8, item.path[0..end], '/')) |slash| {
+            end = slash;
+            try parents.put(item.path[0..slash], {});
+        }
+    }
+
+    var filtered: std.ArrayList(Item) = .empty;
+    errdefer filtered.deinit(allocator);
+    for (items.items) |item| {
+        if (item.kind == .dir and parents.contains(item.path)) continue;
+        try filtered.append(allocator, item);
+    }
+
+    items.deinit(allocator);
+    items.* = filtered;
 }
 
 fn writeCpioEntry(
@@ -956,6 +984,30 @@ test "dependency operators" {
     const plain = parseDependency("baz");
     try std.testing.expectEqual(@as(u32, 0), plain.flags);
     try std.testing.expectEqualStrings("", plain.version);
+}
+
+test "rpm omits parent directories but keeps empty ones" {
+    const allocator = std.testing.allocator;
+
+    var items: std.ArrayList(Item) = .empty;
+    defer items.deinit(allocator);
+
+    try items.append(allocator, .{ .path = "usr/bin/app", .kind = .file, .content = .{ .bytes = "x" } });
+    try items.append(allocator, .{ .path = "usr/lib/App/empty", .kind = .dir });
+
+    try addParentDirectories(allocator, &items);
+    try removeParentDirectories(allocator, &items);
+
+    var has_file = false;
+    var has_empty = false;
+    for (items.items) |item| {
+        if (std.mem.eql(u8, item.path, "usr/bin/app")) has_file = true;
+        if (std.mem.eql(u8, item.path, "usr/lib/App/empty")) has_empty = true;
+        try std.testing.expect(!std.mem.eql(u8, item.path, "usr"));
+        try std.testing.expect(!std.mem.eql(u8, item.path, "usr/bin"));
+    }
+    try std.testing.expect(has_file);
+    try std.testing.expect(has_empty);
 }
 
 test "rpm architecture names" {
