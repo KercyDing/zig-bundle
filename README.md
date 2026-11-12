@@ -70,6 +70,8 @@ pub fn build(b: *std.Build) void {
             .identifier = "com.example.myapp",
             .version = "1.0.0",
             .publisher = "Example <example@example.com>",
+            .copyright = "Copyright 2026 Example",
+            .license = "MIT",
             .description = "My example application",
         },
         .input = .{
@@ -106,6 +108,41 @@ zig build bundle -Dformat=setup_exe -Dtarget=x86_64-windows-gnu
     .tar_gz = .{},
 },
 ```
+
+Debian metadata defaults `maintainer` to `app.publisher`, `copyright` to
+`app.copyright`, and generates a changelog when none is supplied:
+
+```zig
+.deb = .{
+    .depends = &.{ "libc6" },
+    .recommends = &.{ "xdg-utils" },
+    .maintainer = "Example <example@example.com>",
+    .copyright = "Copyright 2026 Example",
+    .homepage = "https://example.com",
+    .revision = "1",
+    .license_file = b.path("LICENSE"),
+    .changelog = b.path("CHANGELOG.md"),
+    .assets = &.{
+        .{ .source = b.path("assets/app.1.gz"), .dest = "usr/share/man/man1/" },
+        .{ .source = b.path("config.toml"), .dest = "etc/myapp/config.toml" },
+    },
+},
+```
+
+`pre_depends`, `suggests`, `enhances`, `conflicts`, `breaks`, `replaces`,
+`provides`, and `multi_arch` (`.same` / `.foreign`) are also available.
+Assets accept files or directories; a trailing `/` means the destination is a
+directory. Files under `etc/` become conffiles automatically, and `conf_files`
+adds paths outside `/etc`. `license_file` is appended to the copyright file;
+`license_file_skip_lines` skips a license header. Pre-compressed `.gz`
+changelogs are installed as-is.
+
+Archives are reproducible and honor `SOURCE_DATE_EPOCH`; without it, entry
+timestamps default to 1980-01-01.
+
+Set top-level `.enable_llvm_strip = true` to strip the bundled executable with
+the system `llvm-strip` for every format; the build fails with an installation
+hint when the tool is not on `PATH`.
 
 The installer is a GUI-subsystem executable with a native install-location window
 (destination edit, Browse, disk space) and TaskDialog prompts. It supports

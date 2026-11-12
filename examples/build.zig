@@ -19,7 +19,14 @@ pub fn build(b: *std.Build) void {
     const formats: bundle.Formats = switch (format) {
         .zip => .{ .zip = .{} },
         .tar_gz => .{ .tar_gz = .{} },
-        .deb => .{ .deb = .{} },
+        .deb => .{ .deb = .{
+            .homepage = "https://example.com/hello-bundle",
+            .assets = &.{
+                .{ .source = b.path("assets/hello-bundle.1.gz"), .dest = "usr/share/man/man1/" },
+                .{ .source = b.path("assets/nested/config.json"), .dest = "etc/hello-bundle/config.json" },
+                .{ .source = b.path("assets/nested"), .dest = "usr/share/hello-bundle/" },
+            },
+        } },
         .setup_exe => .{ .setup_exe = .{
             .shortcuts = .{ .start_menu = true, .desktop = true },
         } },
@@ -38,7 +45,9 @@ pub fn build(b: *std.Build) void {
             .identifier = "com.example.hellobundle",
             .version = "0.1.0",
             .publisher = "Example <example@example.com>",
-            .description = "Example application for zig-bundle",
+            .copyright = "Copyright 2026 Example",
+            .license = "MIT",
+            .description = "Example application for zig-bundle\n\nDemonstrates every format supported by the library.",
         },
         .input = .{
             .executable = exe,
@@ -50,6 +59,8 @@ pub fn build(b: *std.Build) void {
             },
         },
         .formats = formats,
+        // Requires llvm-strip on PATH; disabled so cross-target builds work.
+        .enable_llvm_strip = false,
     });
 
     b.step("bundle", "Bundle the application").dependOn(&bundled.step);
