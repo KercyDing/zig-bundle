@@ -165,6 +165,10 @@ fn renderScript(allocator: std.mem.Allocator, config: Config, icon_name: []const
     try writer.writeAll("ManifestDPIAware true\n");
     try writer.print("RequestExecutionLevel {s}\n", .{execution_level});
 
+    const reg_view = if (std.mem.eql(u8, config.arch, "x86")) "32" else "64";
+    try writer.print("Function .onInit\n  SetRegView {s}\nFunctionEnd\n\n", .{reg_view});
+    try writer.print("Function un.onInit\n  SetRegView {s}\nFunctionEnd\n\n", .{reg_view});
+
     if (versionInfo(allocator, config.version)) |version_info| {
         try writer.print("VIProductVersion \"{s}\"\n", .{version_info});
         try writer.writeAll("VIAddVersionKey \"ProductName\" \"");
@@ -417,6 +421,7 @@ test "nsis script enables dpi awareness" {
     try std.testing.expect(std.mem.indexOf(u8, script, "ManifestDPIAware true") != null);
     try std.testing.expect(std.mem.indexOf(u8, script, "VIProductVersion \"1.0.0.0\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, script, "BrandingText \"App Setup\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, script, "SetRegView 64") != null);
 }
 
 test "nsis finish page offers shortcut choices" {
