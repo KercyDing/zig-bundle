@@ -383,19 +383,6 @@ pub fn project(
         return fail("no bundle formats were configured", .{});
     }
 
-    std.debug.print("zig-bundle: finished {d} bundle(s):\n", .{artifacts.items.len});
-    for (artifacts.items) |path| {
-        const stat = try Io.Dir.cwd().statFile(io, path, .{});
-        if (stat.kind == .directory) {
-            std.debug.print("  {s} (directory)\n", .{path});
-        } else {
-            std.debug.print("  {s} ({d:.2} MiB)\n", .{
-                path,
-                @as(f64, @floatFromInt(stat.size)) / (1024.0 * 1024.0),
-            });
-        }
-    }
-
     return artifacts.toOwnedSlice(allocator);
 }
 

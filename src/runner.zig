@@ -17,8 +17,17 @@ pub fn main(init: std.process.Init) !void {
     }
 
     if (args.items.len < 2) {
-        std.debug.print("usage: zig-bundle-runner <manifest> <paths...> <output>\n", .{});
+        std.debug.print("usage: zig-bundle-runner [--list <prefix> <artifacts> | <manifest> <paths...> <output> <artifacts>]\n", .{});
         std.process.exit(1);
+    }
+
+    if (std.mem.eql(u8, args.items[0], "--list")) {
+        if (args.items.len != 3) {
+            std.debug.print("usage: zig-bundle-runner --list <prefix> <artifacts>\n", .{});
+            std.process.exit(1);
+        }
+        try listArtifacts(init.io, allocator, args.items[1], args.items[2]);
+        return;
     }
 
     const manifest_path = args.items[0];
@@ -46,12 +55,51 @@ pub fn main(init: std.process.Init) !void {
         raw_output_root
     else
         try std.fs.path.join(allocator, &.{ cwd, raw_output_root });
+    if (args.items.len < 2 + count + 1) {
+        std.debug.print("zig-bundle: missing artifacts path\n", .{});
+        std.process.exit(1);
+    }
+    const artifacts_path = args.items[2 + count];
 
-    _ = bundle.project(init.io, init.environ_map, &parsed.value, paths, output_root, allocator) catch |err| switch (err) {
+    const artifacts = bundle.project(init.io, init.environ_map, &parsed.value, paths, output_root, allocator) catch |err| switch (err) {
         error.BundleFailed => std.process.exit(1),
         else => {
             std.debug.print("zig-bundle: {t}\n", .{err});
             std.process.exit(1);
         },
     };
+
+    var file = try std.Io.Dir.cwd().createFile(init.io, artifacts_path, .{ .truncate = true });
+    defer file.close(init.io);
+    var buffer: [16 * 1024]u8 = undefined;
+    var writer = file.writer(init.io, &buffer);
+    for (artifacts) |path| {
+        const relative = try std.fs.path.relativeAlloc(allocator, cwd, init.environ_map, output_root, path);
+        try writer.interface.print("{s}\n", .{relative});
+    }
+    try writer.interface.flush();
+}
+
+fn listArtifacts(io: std.Io, allocator: std.mem.Allocator, prefix: []const u8, path: []const u8) !void {
+    const cwd = try std.process.currentPathAlloc(io, allocator);
+    const clean_prefix = if (std.mem.startsWith(u8, prefix, "./")) prefix[2..] else prefix;
+    const root = if (std.fs.path.isAbsolute(clean_prefix))
+        clean_prefix
+    else
+        try std.fs.path.join(allocator, &.{ cwd, clean_prefix });
+    const bytes = try std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(16 * 1024 * 1024));
+    var stdout_buffer: [16 * 1024]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
+    const out = &stdout_writer.interface;
+
+    var lines = std.mem.tokenizeScalar(u8, bytes, '\n');
+    var first = true;
+    while (lines.next()) |line| {
+        if (first) {
+            try out.print("zig-bundle: finished {d} bundle(s):\n", .{std.mem.count(u8, bytes, "\n")});
+            first = false;
+        }
+        try out.print("  {s}\n", .{try std.fs.path.join(allocator, &.{ root, line })});
+    }
+    try out.flush();
 }

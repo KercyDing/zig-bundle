@@ -87,13 +87,22 @@ pub fn add(b: *std.Build, options: Options, comptime build_zig: type) *BundleSte
     }
 
     const output_dir = run.addOutputDirectoryArg("bundle");
+    const artifacts_file = run.addOutputFileArg("artifacts.txt");
     const install = b.addInstallDirectory(.{
         .source_dir = output_dir,
         .install_dir = .{ .custom = "bundle" },
         .install_subdir = "",
     });
 
-    self.step = &install.step;
+    const install_root: std.Build.LazyPath = .{ .relative = .{ .base = .install_prefix, .sub_path = "bundle" } };
+    const list = b.addRunArtifact(runner);
+    list.stdio = .inherit;
+    list.addArg("--list");
+    list.addDirectoryArg(install_root);
+    list.addFileArg(artifacts_file);
+    list.step.dependOn(&install.step);
+
+    self.step = &list.step;
     return self;
 }
 
