@@ -41,10 +41,10 @@ jobs:
             format: rpm
           - os: macos-latest
             target: x86_64-macos
-            format: zip
+            format: app
           - os: macos-latest
             target: aarch64-macos
-            format: zip
+            format: app
           - os: windows-latest
             target: x86_64-windows-gnu
             format: nsis
@@ -68,6 +68,11 @@ jobs:
       - name: Native build
         working-directory: examples
         run: zig build bundle -Dformat=${{ matrix.format }} -Dtarget=${{ matrix.target }}
+
+      - name: macOS DMG
+        if: runner.os == 'macOS'
+        working-directory: examples
+        run: zig build bundle -Dformat=dmg -Dtarget=${{ matrix.target }}
 
   windows-installer:
     name: Windows installer smoke test
