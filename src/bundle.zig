@@ -5,6 +5,7 @@ const capabilities = @import("capabilities.zig");
 const deb = @import("bundle/linux/deb.zig");
 const icons = @import("bundle/common/icons.zig");
 const output = @import("bundle/common/output.zig");
+const rpm = @import("bundle/linux/rpm.zig");
 const staging = @import("bundle/common/staging.zig");
 const settings = @import("settings.zig");
 const setup_exe = @import("bundle/windows/setup_exe/root.zig");
@@ -36,6 +37,13 @@ pub fn project(
     const deb_arch: ?[]const u8 = if (config.deb != null)
         deb.archName(target.result.cpu.arch) catch {
             return step.fail("unsupported architecture for deb: {s}", .{@tagName(target.result.cpu.arch)});
+        }
+    else
+        null;
+
+    const rpm_arch: ?[]const u8 = if (config.rpm != null)
+        rpm.archName(target.result.cpu.arch) catch {
+            return step.fail("unsupported architecture for rpm: {s}", .{@tagName(target.result.cpu.arch)});
         }
     else
         null;
@@ -164,6 +172,67 @@ pub fn project(
                 .conf_files = options.conf_files,
             },
         }, deb_arch.?, dir, package_basename, arena) catch |err| {
+            return step.fail("failed to create '{s}': {t}", .{ path, err });
+        };
+
+        try artifacts.append(b.allocator, b.dupe(path));
+    }
+
+    if (config.rpm) |options| {
+        const dir = try output.formatDir(io, arena, output_root, .rpm);
+        const package = try deb.toKebabCase(arena, config.name);
+        const package_version = rpm.packageVersion(arena, config.version) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => return step.fail("invalid rpm version '{s}'", .{config.version}),
+        };
+        rpm.validateRelease(options.release) catch {
+            return step.fail("invalid rpm release '{s}'", .{options.release});
+        };
+        const package_basename = try std.fmt.allocPrint(arena, "{s}-{s}-{s}.{s}.rpm", .{
+            package,
+            package_version,
+            options.release,
+            rpm_arch.?,
+        });
+        const path = try std.fs.path.join(arena, &.{ dir, package_basename });
+
+        const rpm_assets = try arena.alloc(rpm.Asset, options.assets.len);
+        for (options.assets, rpm_assets) |asset, *dest| {
+            dest.* = .{
+                .source_path = try staging.resolveLazyPath(b, step, asset.source, arena),
+                .dest = asset.dest,
+                .mode = asset.mode,
+            };
+        }
+
+        var file = try output.create(io, path);
+        defer file.close(io);
+
+        rpm.bundle(io, file, .{
+            .name = config.name,
+            .version = package_version,
+            .packager = config.publisher,
+            .description = config.description,
+            .license = config.license,
+            .categories = config.categories,
+            .arch = rpm_arch.?,
+            .executable_name = config.executable.out_filename,
+            .payload = payload.entries.items,
+            .icons = png_icons,
+            .assets = rpm_assets,
+            .mtime = mtime,
+            .options = .{
+                .release = options.release,
+                .epoch = options.epoch,
+                .group = options.group,
+                .url = options.url,
+                .license = options.license,
+                .requires = options.requires,
+                .provides = options.provides,
+                .conflicts = options.conflicts,
+                .obsoletes = options.obsoletes,
+            },
+        }, arena) catch |err| {
             return step.fail("failed to create '{s}': {t}", .{ path, err });
         };
 

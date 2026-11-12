@@ -16,11 +16,12 @@ reimplemented in Zig and designed around `std.Build`.
 | `zip` | `<prefix>/bundle/zip/<name>-<version>-<arch>-<os>.zip` |
 | `tar_gz` | `<prefix>/bundle/tar_gz/<name>-<version>-<arch>-<os>.tar.gz` |
 | `deb` | `<prefix>/bundle/deb/<name>_<version>_<deb-arch>.deb` |
+| `rpm` | `<prefix>/bundle/rpm/<name>-<version>-<release>.<rpm-arch>.rpm` |
 | `setup_exe` | `<prefix>/bundle/setup_exe/<name>_<version>_<arch>-setup.exe` |
 
 Archives contain the executable and configured resources at the archive root.
 Timestamps are fixed so repeated builds produce identical archives.
-`deb` requires a Linux target and is generated natively without external tools.
+`deb` and `rpm` require a Linux target and are generated natively without external tools.
 `setup_exe` requires a Windows target and embeds a Zig-native installer runtime.
 Format/host/target compatibility is validated while configuring the bundle, before any build steps run.
 `<prefix>` is the Zig install prefix, which defaults to `zig-out` (override with `zig build --prefix <path>`).
@@ -57,6 +58,7 @@ pub fn build(b: *std.Build) void {
         .zip => .{ .zip = .{} },
         .tar_gz => .{ .tar_gz = .{} },
         .deb => .{ .deb = .{} },
+        .rpm => .{ .rpm = .{} },
         .setup_exe => .{ .setup_exe = .{
             .install_scope = .current_user,
             .shortcuts = .{ .start_menu = true, .desktop = true },
@@ -98,6 +100,7 @@ Select the format with `-Dformat`; the default is `zip`:
 ```bash
 zig build bundle
 zig build bundle -Dformat=deb -Dtarget=x86_64-linux-gnu
+zig build bundle -Dformat=rpm -Dtarget=x86_64-linux-gnu
 zig build bundle -Dformat=setup_exe -Dtarget=x86_64-windows-gnu
 ```
 
@@ -150,6 +153,29 @@ triggers file in the control archive.
 Archives are reproducible and honor `SOURCE_DATE_EPOCH`; without it, entry
 timestamps default to 1980-01-01.
 
+RPM metadata mirrors the same payload and asset model:
+
+```zig
+.rpm = .{
+    .release = "1",
+    .epoch = 1,                 // optional
+    .url = "https://example.com",
+    .requires = &.{ "libc.so.6()(64bit)" },
+    .provides = &.{"foo = 1"},
+    .conflicts = &.{},
+    .obsoletes = &.{},
+    .assets = &.{
+        .{ .source = b.path("assets/myapp.1"), .dest = "usr/share/man/man1/" },
+        .{ .source = b.path("config.toml"), .dest = "etc/myapp/config.toml" },
+    },
+},
+```
+
+Files under `etc/` are marked as RPM config files and get automatic
+`config(<name>)` provides/requires. Man pages under `usr/share/man` are
+gzip-compressed automatically. Dependencies accept `name`, `name = version`,
+and comparison operators.
+
 Set top-level `.enable_llvm_strip = true` to strip the bundled executable with
 the system `llvm-strip` for every format; the build fails with an installation
 hint when the tool is not on `PATH`.
@@ -181,5 +207,6 @@ only example run
 only example zip
 only example tar_gz
 only example deb
+only example rpm
 only example setup_exe
 ```

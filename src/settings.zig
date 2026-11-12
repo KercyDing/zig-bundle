@@ -79,6 +79,8 @@ pub const Formats = struct {
     tar_gz: ?TarGzOptions = null,
     /// Debian package. Requires a Linux target.
     deb: ?DebOptions = null,
+    /// RPM package. Requires a Linux target.
+    rpm: ?RpmOptions = null,
     /// Windows installer. Requires a Windows target.
     setup_exe: ?SetupExeOptions = null,
 };
@@ -181,6 +183,30 @@ pub const DebOptions = struct {
     triggers: ?std.Build.LazyPath = null,
 };
 
+/// RPM package options.
+pub const RpmOptions = struct {
+    /// RPM release. Defaults to `"1"`.
+    release: []const u8 = "1",
+    /// RPM epoch.
+    epoch: ?u32 = null,
+    /// RPM group. Defaults to `"Unspecified"`.
+    group: []const u8 = "Unspecified",
+    /// Project homepage written to the `URL` tag.
+    url: ?[]const u8 = null,
+    /// License override; defaults to `app.license`.
+    license: ?[]const u8 = null,
+    /// Runtime requirements, e.g. `"libc.so.6()(64bit)"` or `"foo >= 1.0"`.
+    requires: []const []const u8 = &.{},
+    /// Additional provides, in the same syntax as `requires`.
+    provides: []const []const u8 = &.{},
+    /// Conflicting packages.
+    conflicts: []const []const u8 = &.{},
+    /// Obsoleted packages.
+    obsoletes: []const []const u8 = &.{},
+    /// Additional files installed by the package.
+    assets: []const Asset = &.{},
+};
+
 /// Windows installer options.
 pub const SetupExeOptions = struct {
     /// Per-user install by default; `all_users` requires elevation.
@@ -227,6 +253,7 @@ pub const Settings = struct {
     zip: ?ZipOptions,
     tar_gz: ?TarGzOptions,
     deb: ?DebOptions,
+    rpm: ?RpmOptions,
     setup_exe: ?SetupExeOptions,
     /// Strip the executable with `llvm-strip` before packaging.
     enable_llvm_strip: bool,
@@ -261,6 +288,7 @@ pub const Settings = struct {
         if (options.formats.zip == null and
             options.formats.tar_gz == null and
             options.formats.deb == null and
+            options.formats.rpm == null and
             options.formats.setup_exe == null)
         {
             std.process.fatal("zig-bundle: at least one output format must be enabled", .{});
@@ -297,6 +325,7 @@ pub const Settings = struct {
         if (options.formats.zip != null) validateFormat(.zip, host, target);
         if (options.formats.tar_gz != null) validateFormat(.tar_gz, host, target);
         if (options.formats.deb != null) validateFormat(.deb, host, target);
+        if (options.formats.rpm != null) validateFormat(.rpm, host, target);
         if (options.formats.setup_exe != null) validateFormat(.setup_exe, host, target);
 
         const resources = b.allocator.alloc(Resource, options.input.resources.len) catch @panic("OOM");
@@ -306,6 +335,29 @@ pub const Settings = struct {
                 .dest = if (resource.dest) |path| b.dupe(path) else null,
             };
         }
+
+        const rpm = if (options.formats.rpm) |rpm_options| blk: {
+            const assets = b.allocator.alloc(Asset, rpm_options.assets.len) catch @panic("OOM");
+            for (rpm_options.assets, assets) |asset, *dest| {
+                dest.* = .{
+                    .source = asset.source,
+                    .dest = b.dupe(asset.dest),
+                    .mode = asset.mode,
+                };
+            }
+            break :blk RpmOptions{
+                .release = b.dupe(rpm_options.release),
+                .epoch = rpm_options.epoch,
+                .group = b.dupe(rpm_options.group),
+                .url = if (rpm_options.url) |url| b.dupe(url) else null,
+                .license = if (rpm_options.license) |license| b.dupe(license) else null,
+                .requires = dupeStrings(b, rpm_options.requires),
+                .provides = dupeStrings(b, rpm_options.provides),
+                .conflicts = dupeStrings(b, rpm_options.conflicts),
+                .obsoletes = dupeStrings(b, rpm_options.obsoletes),
+                .assets = assets,
+            };
+        } else null;
 
         const deb = if (options.formats.deb) |deb_options| blk: {
             const assets = b.allocator.alloc(Asset, deb_options.assets.len) catch @panic("OOM");
@@ -366,6 +418,7 @@ pub const Settings = struct {
             .zip = options.formats.zip,
             .tar_gz = options.formats.tar_gz,
             .deb = deb,
+            .rpm = rpm,
             .setup_exe = options.formats.setup_exe,
             .enable_llvm_strip = options.enable_llvm_strip,
         };
@@ -424,6 +477,7 @@ test "options default to a ZIP bundle" {
     try std.testing.expect(options.formats.zip != null);
     try std.testing.expect(options.formats.tar_gz == null);
     try std.testing.expect(options.formats.deb == null);
+    try std.testing.expect(options.formats.rpm == null);
     try std.testing.expect(options.formats.setup_exe == null);
 }
 

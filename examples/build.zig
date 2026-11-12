@@ -19,6 +19,7 @@ pub fn build(b: *std.Build) void {
     const formats: bundle.Formats = switch (format) {
         .zip => .{ .zip = .{} },
         .tar_gz => .{ .tar_gz = .{} },
+        .rpm => .{ .rpm = .{} },
         .deb => .{ .deb = .{
             .homepage = "https://example.com/hello-bundle",
             .assets = &.{

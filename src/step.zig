@@ -46,6 +46,9 @@ pub fn add(b: *std.Build, options: Options) *BundleStep {
     if (self.settings.icons.ico) |icon| {
         icon.addStepDependencies(&self.step);
     }
+    if (self.settings.rpm) |rpm| {
+        for (rpm.assets) |asset| asset.source.addStepDependencies(&self.step);
+    }
     if (self.settings.deb) |deb| {
         if (deb.changelog) |changelog| changelog.addStepDependencies(&self.step);
         if (deb.license_file) |license| license.addStepDependencies(&self.step);

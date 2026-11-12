@@ -13,6 +13,7 @@ const bundle = @import("bundle.zig");
 const capabilities = @import("capabilities.zig");
 const deb = @import("bundle/linux/deb.zig");
 const resources = @import("bundle/common/resources.zig");
+const rpm = @import("bundle/linux/rpm.zig");
 const settings = @import("settings.zig");
 const setup_exe = @import("bundle/windows/setup_exe/root.zig");
 const step = @import("step.zig");
@@ -39,6 +40,8 @@ pub const MultiArch = settings.MultiArch;
 pub const Options = settings.Options;
 /// File or directory copied into the bundle.
 pub const Resource = settings.Resource;
+/// RPM package options.
+pub const RpmOptions = settings.RpmOptions;
 /// Windows installer options.
 pub const SetupExeOptions = settings.SetupExeOptions;
 /// tar.gz archive options.
@@ -57,6 +60,7 @@ test {
     std.testing.refAllDecls(capabilities);
     std.testing.refAllDecls(deb);
     std.testing.refAllDecls(resources);
+    std.testing.refAllDecls(rpm);
     std.testing.refAllDecls(settings);
     std.testing.refAllDecls(setup_exe);
     std.testing.refAllDecls(step);

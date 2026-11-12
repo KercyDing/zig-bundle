@@ -30,6 +30,8 @@ pub const MultiArch = root.MultiArch;
 pub const Options = root.Options;
 /// File or directory copied into the bundle.
 pub const Resource = root.Resource;
+/// RPM package options.
+pub const RpmOptions = root.RpmOptions;
 /// Windows installer options.
 pub const SetupExeOptions = root.SetupExeOptions;
 /// tar.gz archive options.

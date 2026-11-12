@@ -1,7 +1,7 @@
 //! Host and target compatibility checks for bundle formats.
 const std = @import("std");
 
-pub const Format = enum { zip, tar_gz, deb, setup_exe };
+pub const Format = enum { zip, tar_gz, deb, rpm, setup_exe };
 
 /// Host platform a format can be produced on.
 pub const Host = enum { any, macos, linux };
@@ -16,7 +16,7 @@ pub const Spec = struct {
 pub fn spec(format: Format) Spec {
     return switch (format) {
         .zip, .tar_gz => .{},
-        .deb => .{ .target_os = .linux },
+        .deb, .rpm => .{ .target_os = .linux },
         .setup_exe => .{ .target_os = .windows },
     };
 }
@@ -38,6 +38,7 @@ pub fn extension(format: Format) []const u8 {
         .zip => ".zip",
         .tar_gz => ".tar.gz",
         .deb => ".deb",
+        .rpm => ".rpm",
         // The installer uses `-setup.exe`; the extension itself stays `.exe`.
         .setup_exe => ".exe",
     };
@@ -76,6 +77,11 @@ fn checkSpec(
 test "deb requires linux target" {
     try check(.deb, .windows, .x86_64, .linux, .x86_64);
     try std.testing.expectError(error.UnsupportedTarget, check(.deb, .windows, .x86_64, .windows, .x86_64));
+}
+
+test "rpm requires linux target" {
+    try check(.rpm, .macos, .x86_64, .linux, .aarch64);
+    try std.testing.expectError(error.UnsupportedTarget, check(.rpm, .linux, .x86_64, .macos, .x86_64));
 }
 
 test "setup_exe requires windows target" {
