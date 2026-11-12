@@ -161,7 +161,7 @@ pub fn bundle(
 
     const changelog = try loadChangelog(io, allocator, config, package, maintainer);
     try data_items.append(allocator, .{
-        .path = try std.fmt.allocPrint(allocator, "{s}/changelog.gz", .{doc_dir}),
+        .path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ doc_dir, changelogFileName(config.version) }),
         .kind = .file,
         .mode = 0o644,
         .content = .{ .bytes = changelog },
@@ -601,6 +601,15 @@ fn renderCopyright(
     return allocating.toOwnedSlice();
 }
 
+/// Native packages use `changelog.gz`; versions with a Debian revision use
+/// `changelog.Debian.gz`.
+fn changelogFileName(version: []const u8) []const u8 {
+    return if (std.mem.indexOfScalar(u8, version, '-') == null)
+        "changelog.gz"
+    else
+        "changelog.Debian.gz";
+}
+
 fn loadChangelog(
     io: Io,
     allocator: std.mem.Allocator,
@@ -850,6 +859,12 @@ test "control relationship fields" {
     try std.testing.expect(std.mem.indexOf(u8, control, "Homepage: https://example.com\n") != null);
     try std.testing.expect(std.mem.indexOf(u8, control, "Depends: libc6\n") != null);
     try std.testing.expect(std.mem.indexOf(u8, control, "Recommends: a, b\n") != null);
+}
+
+test "changelog name follows native version" {
+    try std.testing.expectEqualStrings("changelog.gz", changelogFileName("1.0.0"));
+    try std.testing.expectEqualStrings("changelog.Debian.gz", changelogFileName("1.0.0-1"));
+    try std.testing.expectEqualStrings("changelog.Debian.gz", changelogFileName("1.0.0-beta"));
 }
 
 test "rfc 2822 date" {
