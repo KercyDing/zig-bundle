@@ -242,7 +242,6 @@ fn findTool(
 ) ![]const u8 {
     const name = configured orelse "makensis";
     if (std.mem.indexOfScalar(u8, name, '/') != null or std.mem.indexOfScalar(u8, name, '\\') != null) {
-        Io.Dir.cwd().access(io, name, .{ .execute = true }) catch return error.MakensisNotFound;
         return name;
     }
 

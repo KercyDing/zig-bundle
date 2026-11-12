@@ -3,7 +3,12 @@
     .version = "0.0.1",
     .fingerprint = 0xe92be97a61f22f36,
     .minimum_zig_version = "0.16.0",
-    .dependencies = .{},
+    .dependencies = .{
+        .nsis = .{
+            .url = "https://github.com/KercyDing/zig-bundle/releases/download/nsis-3.13/nsis-3.13.zip",
+            .hash = "N-V-__8AAHH4bADGwT5kk16hQEobaBMcIZ6-ugAZwiR48PiZ",
+        },
+    },
     .paths = .{
         "build.zig",
         "build.zig.zon",

@@ -1,4 +1,5 @@
 //! Build step that stages resources and produces bundle artifacts.
+const builtin = @import("builtin");
 const std = @import("std");
 
 const bundle = @import("bundle.zig");
@@ -24,7 +25,17 @@ pub const BundleStep = struct {
 
 /// Registers a bundle step and returns it. Depend on `bundled.step` to run it.
 /// Formats and target compatibility are validated before the build starts.
-pub fn add(b: *std.Build, options: Options) *BundleStep {
+pub fn add(b: *std.Build, initial_options: Options, comptime build_zig: type) *BundleStep {
+    var options = initial_options;
+    if (options.formats.nsis) |*nsis| {
+        if (nsis.makensis == null and builtin.os.tag == .windows) {
+            const lib = b.dependencyFromBuildZig(build_zig, .{});
+            if (lib.builder.lazyDependency("nsis", .{})) |dep| {
+                nsis.makensis = dep.path("nsis-3.13/makensis.exe").getPath(lib.builder);
+            }
+        }
+    }
+
     const self = b.allocator.create(BundleStep) catch @panic("OOM");
     self.* = .{
         .step = std.Build.Step.init(.{

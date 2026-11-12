@@ -9,6 +9,8 @@
 //! b.step("bundle", "Bundle application").dependOn(&bundled.step);
 //! ```
 
+const std = @import("std");
+
 const appimage = @import("bundle/linux/appimage.zig");
 const bundle = @import("bundle.zig");
 const capabilities = @import("capabilities.zig");
@@ -22,7 +24,9 @@ const tar_gz = @import("bundle/common/tar_gz.zig");
 const zip = @import("bundle/common/zip.zig");
 
 /// Registers the bundle build step.
-pub const add = step.add;
+pub fn addWithBuildZig(b: *std.Build, options: Options, comptime build_zig: type) *BundleStep {
+    return step.add(b, options, build_zig);
+}
 
 /// Application metadata shared by every output format.
 pub const App = settings.App;
@@ -58,8 +62,6 @@ pub const ZipOptions = settings.ZipOptions;
 pub const BundleStep = step.BundleStep;
 
 test {
-    const std = @import("std");
-
     std.testing.refAllDecls(bundle);
     std.testing.refAllDecls(capabilities);
     std.testing.refAllDecls(deb);

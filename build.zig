@@ -6,7 +6,9 @@ const root = @import("src/root.zig");
 // This file is imported directly by consumer build scripts via
 // `@import("bundle")`, so it re-exports the public configuration API.
 /// Registers the bundle build step.
-pub const add = root.add;
+pub fn add(b: *std.Build, options: Options) *BundleStep {
+    return root.addWithBuildZig(b, options, @This());
+}
 
 /// Application metadata shared by every output format.
 pub const App = root.App;
