@@ -131,6 +131,21 @@ pub fn prepare(b: *std.Build, config: *const settings.Settings) !Prepared {
         .appimagetool = options.appimagetool,
     } else null;
 
+    const app = if (config.app_bundle) |options| blk: {
+        const entries = try b.allocator.alloc(manifest.PlistEntry, options.plist_entries.len);
+        for (options.plist_entries, entries) |entry, *dest| {
+            dest.* = .{
+                .key = entry.key,
+                .value = switch (entry.value) {
+                    .string => |value| .{ .string = value },
+                    .boolean => |value| .{ .boolean = value },
+                    .integer => |value| .{ .integer = value },
+                },
+            };
+        }
+        break :blk manifest.App{ .plist_entries = entries };
+    } else null;
+
     const dmg = if (config.dmg) |options| manifest.Dmg{
         .volume_name = options.volume_name,
         .compression = switch (options.compression) {
@@ -192,7 +207,7 @@ pub fn prepare(b: *std.Build, config: *const settings.Settings) !Prepared {
                 .rpm = rpm,
                 .appimage = appimage,
                 .nsis = nsis,
-                .app = config.app_bundle != null,
+                .app = app,
                 .dmg = dmg,
             },
         },

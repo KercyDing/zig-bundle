@@ -35,7 +35,7 @@ They do not implicitly include a `.app`.
 Pin a release:
 
 ```bash
-zig fetch --save=bundle git+https://github.com/KercyDing/zig-bundle#v0.1.0
+zig fetch --save=bundle git+https://github.com/KercyDing/zig-bundle#v0.1.1
 ```
 
 Track `main` for the latest changes; it may contain breaking changes:
@@ -325,6 +325,18 @@ MyApp.app/
 from square PNG icons without `iconutil` or `sips`; include 512x512 and
 1024x1024 sources for complete coverage. A configured `icons.icns` is copied
 instead.
+
+Extra `Info.plist` keys can be added when needed:
+
+```zig
+.app = .{
+    .plist_entries = &.{
+        plistBool("LSUIElement", true),
+        plistString("LSMinimumSystemVersion", "13.0"),
+        plistString("NSScreenCaptureUsageDescription", "Captures the screen to recognize text."),
+    },
+},
+```
 
 Signing and notarization are not performed. Use `codesign` and `notarytool`
 separately on a macOS host when distributing the app.

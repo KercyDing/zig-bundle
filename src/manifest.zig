@@ -79,6 +79,21 @@ pub const DmgLayout = struct {
     applications_y: i32 = 220,
 };
 
+pub const PlistValue = union(enum) {
+    string: []const u8,
+    boolean: bool,
+    integer: i64,
+};
+
+pub const PlistEntry = struct {
+    key: []const u8,
+    value: PlistValue,
+};
+
+pub const App = struct {
+    plist_entries: []const PlistEntry = &.{},
+};
+
 pub const Dmg = struct {
     volume_name: ?[]const u8 = null,
     compression: enum { udzo, udbz, ulfo } = .udzo,
@@ -101,7 +116,7 @@ pub const Formats = struct {
     rpm: ?Rpm = null,
     appimage: ?AppImage = null,
     nsis: ?Nsis = null,
-    app: bool = false,
+    app: ?App = null,
     dmg: ?Dmg = null,
 };
 

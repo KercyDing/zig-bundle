@@ -67,6 +67,16 @@ pub const Input = settings.Input;
 pub const MultiArch = settings.MultiArch;
 /// Configuration accepted by `add`.
 pub const Options = settings.Options;
+/// Extra `Info.plist` entry.
+pub const PlistEntry = settings.PlistEntry;
+/// Builds a boolean `Info.plist` entry.
+pub const plistBool = settings.plistBool;
+/// Builds an integer `Info.plist` entry.
+pub const plistInteger = settings.plistInteger;
+/// Builds a string `Info.plist` entry.
+pub const plistString = settings.plistString;
+/// Extra `Info.plist` value.
+pub const PlistValue = settings.PlistValue;
 /// File or directory copied into the bundle.
 pub const Resource = settings.Resource;
 /// RPM package options.

@@ -262,7 +262,7 @@ pub fn project(
         try artifacts.append(allocator, try allocator.dupe(u8, path));
     }
 
-    if (config.formats.app) {
+    if (config.formats.app) |options| {
         const dir = try output.formatDir(io, arena, output_root, .app);
         const app_dir = try std.fmt.allocPrint(arena, "{s}/{s}.app", .{ dir, config.name });
 
@@ -274,6 +274,7 @@ pub fn project(
             .payload = payload.entries.items,
             .icons = png_icons,
             .icns_path = icns_path,
+            .plist_entries = options.plist_entries,
         }, arena) catch |err| switch (err) {
             error.MissingIcon => return fail(
                 "macOS app requires an ICNS or at least one square PNG icon",
@@ -302,6 +303,7 @@ pub fn project(
             .payload = payload.entries.items,
             .icons = png_icons,
             .icns_path = icns_path,
+            .plist_entries = if (config.formats.app) |app_options| app_options.plist_entries else &.{},
             .volume_name = options.volume_name,
             .compression = switch (options.compression) {
                 .udzo => .udzo,

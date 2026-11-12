@@ -267,8 +267,39 @@ pub const NsisSource = struct {
     }
 };
 
+/// Extra `Info.plist` value.
+pub const PlistValue = union(enum) {
+    string: []const u8,
+    boolean: bool,
+    integer: i64,
+};
+
+/// Extra `Info.plist` entry.
+pub const PlistEntry = struct {
+    key: []const u8,
+    value: PlistValue,
+};
+
+/// Builds a string `Info.plist` entry.
+pub fn plistString(key: []const u8, value: []const u8) PlistEntry {
+    return .{ .key = key, .value = .{ .string = value } };
+}
+
+/// Builds a boolean `Info.plist` entry.
+pub fn plistBool(key: []const u8, value: bool) PlistEntry {
+    return .{ .key = key, .value = .{ .boolean = value } };
+}
+
+/// Builds an integer `Info.plist` entry.
+pub fn plistInteger(key: []const u8, value: i64) PlistEntry {
+    return .{ .key = key, .value = .{ .integer = value } };
+}
+
 /// macOS application bundle options.
-pub const AppBundleOptions = struct {};
+pub const AppBundleOptions = struct {
+    /// Extra keys appended to the generated `Info.plist`.
+    plist_entries: []const PlistEntry = &.{},
+};
 
 /// DMG compression format passed to `hdiutil`.
 pub const DmgCompression = enum { udzo, udbz, ulfo };
@@ -505,7 +536,20 @@ pub const Settings = struct {
             },
         } else null;
 
-        const app_bundle: ?AppBundleOptions = if (options.formats.app != null) .{} else null;
+        const app_bundle: ?AppBundleOptions = if (options.formats.app) |app_options| blk: {
+            const entries = b.allocator.alloc(PlistEntry, app_options.plist_entries.len) catch @panic("OOM");
+            for (app_options.plist_entries, entries) |entry, *dest| {
+                dest.* = .{
+                    .key = b.dupe(entry.key),
+                    .value = switch (entry.value) {
+                        .string => |value| .{ .string = b.dupe(value) },
+                        .boolean => |value| .{ .boolean = value },
+                        .integer => |value| .{ .integer = value },
+                    },
+                };
+            }
+            break :blk AppBundleOptions{ .plist_entries = entries };
+        } else null;
         const dmg: ?DmgOptions = if (options.formats.dmg) |dmg_options| DmgOptions{
             .volume_name = if (dmg_options.volume_name) |name| b.dupe(name) else null,
             .compression = dmg_options.compression,

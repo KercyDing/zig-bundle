@@ -3,6 +3,7 @@ const std = @import("std");
 
 const files = @import("../common/files.zig");
 const icons = @import("../common/icons.zig");
+const manifest = @import("../../manifest.zig");
 const resources = @import("../common/resources.zig");
 
 const Io = std.Io;
@@ -16,6 +17,8 @@ pub const Config = struct {
     icons: []const icons.Png = &.{},
     /// ICNS file copied as-is; takes precedence over generated icons.
     icns_path: ?[]const u8 = null,
+    /// Extra keys appended to `Info.plist`.
+    plist_entries: []const manifest.PlistEntry = &.{},
 };
 
 /// Writes a complete `.app` directory at `app_dir`.
@@ -60,6 +63,7 @@ pub fn bundle(io: Io, app_dir: []const u8, config: Config, allocator: std.mem.Al
         .version = config.version,
         .executable_name = config.executable_name,
         .icon_file = icon_file,
+        .plist_entries = config.plist_entries,
     });
     try files.writeBytes(io, try std.Io.Dir.path.join(allocator, &.{ contents, "Info.plist" }), plist, false);
     try files.writeBytes(io, try std.Io.Dir.path.join(allocator, &.{ contents, "PkgInfo" }), "APPL????", false);
@@ -71,6 +75,7 @@ pub const Info = struct {
     version: []const u8,
     executable_name: []const u8,
     icon_file: ?[]const u8 = null,
+    plist_entries: []const manifest.PlistEntry = &.{},
 };
 
 /// Renders the `Info.plist` property list.
@@ -98,6 +103,21 @@ pub fn renderInfoPlist(allocator: std.mem.Allocator, info: Info) ![]u8 {
     try writeString(writer, "CFBundleShortVersionString", info.version);
     try writeString(writer, "CFBundleVersion", info.version);
     try writer.writeAll("  <key>NSHighResolutionCapable</key>\n  <true/>\n");
+
+    for (info.plist_entries) |entry| {
+        try writer.writeAll("  <key>");
+        try writeXmlEscaped(writer, entry.key);
+        try writer.writeAll("</key>\n");
+        switch (entry.value) {
+            .string => |value| {
+                try writer.writeAll("  <string>");
+                try writeXmlEscaped(writer, value);
+                try writer.writeAll("</string>\n");
+            },
+            .boolean => |value| try writer.print("  <{s}/>\n", .{if (value) "true" else "false"}),
+            .integer => |value| try writer.print("  <integer>{d}</integer>\n", .{value}),
+        }
+    }
 
     try writer.writeAll("</dict>\n</plist>\n");
     return out.toOwnedSlice();
@@ -188,4 +208,25 @@ test "info plist omits the icon key when no icon is available" {
     defer allocator.free(plist);
 
     try std.testing.expect(std.mem.indexOf(u8, plist, "CFBundleIconFile") == null);
+}
+
+test "info plist includes extra entries" {
+    const allocator = std.testing.allocator;
+
+    const plist = try renderInfoPlist(allocator, .{
+        .name = "App",
+        .identifier = "com.example.app",
+        .version = "1.0.0",
+        .executable_name = "app",
+        .plist_entries = &.{
+            .{ .key = "LSUIElement", .value = .{ .boolean = true } },
+            .{ .key = "LSMinimumSystemVersion", .value = .{ .string = "13.0" } },
+            .{ .key = "BuildNumber", .value = .{ .integer = 7 } },
+        },
+    });
+    defer allocator.free(plist);
+
+    try std.testing.expect(std.mem.indexOf(u8, plist, "<key>LSUIElement</key>\n  <true/>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, plist, "<key>LSMinimumSystemVersion</key>\n  <string>13.0</string>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, plist, "<key>BuildNumber</key>\n  <integer>7</integer>") != null);
 }

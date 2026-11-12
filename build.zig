@@ -49,6 +49,16 @@ pub const Input = root.Input;
 pub const MultiArch = root.MultiArch;
 /// Configuration accepted by `add`.
 pub const Options = root.Options;
+/// Extra `Info.plist` entry.
+pub const PlistEntry = root.PlistEntry;
+/// Builds a boolean `Info.plist` entry.
+pub const plistBool = root.plistBool;
+/// Builds an integer `Info.plist` entry.
+pub const plistInteger = root.plistInteger;
+/// Builds a string `Info.plist` entry.
+pub const plistString = root.plistString;
+/// Extra `Info.plist` value.
+pub const PlistValue = root.PlistValue;
 /// File or directory copied into the bundle.
 pub const Resource = root.Resource;
 /// RPM package options.
