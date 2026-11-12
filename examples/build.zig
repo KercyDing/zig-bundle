@@ -18,26 +18,11 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    const formats: bundle.Formats = switch (format) {
-        .zip => .{ .zip = .{} },
-        .tar_gz => .{ .tar_gz = .{} },
-        .rpm => .{ .rpm = .{} },
-        .appimage => .{ .appimage = .{} },
-        .deb => .{ .deb = .{
-            .homepage = "https://example.com/hello-bundle",
-            .assets = &.{
-                .{ .source = b.path("assets/hello-bundle.1"), .dest = "usr/share/man/man1/" },
-                .{ .source = b.path("assets/nested/config.json"), .dest = "etc/hello-bundle/config.json" },
-                .{ .source = b.path("assets/nested"), .dest = "usr/share/hello-bundle/" },
-            },
-        } },
-        .nsis => .{ .nsis = .{
-            .install_scope = install_scope,
-            .shortcuts = .{ .start_menu = true, .desktop = true },
-        } },
-        .app => .{ .app = .{} },
-        .dmg => .{ .dmg = .{} },
-    };
+    var formats = bundle.standardFormats(format);
+    if (formats.nsis) |*nsis| {
+        nsis.install_scope = install_scope;
+        nsis.shortcuts = .{ .start_menu = true, .desktop = true };
+    }
 
     b.installArtifact(exe);
 

@@ -27,6 +27,14 @@ const step = @import("step.zig");
 const tar_gz = @import("bundle/common/tar_gz.zig");
 const zip = @import("bundle/common/zip.zig");
 
+/// Registers the bundle build step.
+pub fn addWithBuildZig(b: *std.Build, options: Options, comptime build_zig: type) *BundleStep {
+    return step.add(b, options, build_zig);
+}
+/// Returns the default options for one format.
+pub fn standardFormats(format: Format) Formats {
+    return settings.standardFormats(format);
+}
 /// Application metadata shared by every output format.
 pub const App = settings.App;
 /// macOS application bundle options.
@@ -63,10 +71,6 @@ pub const NsisOptions = settings.NsisOptions;
 pub const TarGzOptions = settings.TarGzOptions;
 /// ZIP archive options.
 pub const ZipOptions = settings.ZipOptions;
-/// Registers the bundle build step.
-pub fn addWithBuildZig(b: *std.Build, options: Options, comptime build_zig: type) *BundleStep {
-    return step.add(b, options, build_zig);
-}
 /// Build step that produces the configured bundles.
 pub const BundleStep = step.BundleStep;
 

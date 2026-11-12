@@ -99,6 +99,20 @@ pub const Formats = struct {
 /// Supported bundle formats, for command-line selection.
 pub const Format = std.meta.FieldEnum(Formats);
 
+/// Returns the default options for one format.
+pub fn standardFormats(format: Format) Formats {
+    return switch (format) {
+        .zip => .{ .zip = .{} },
+        .tar_gz => .{ .tar_gz = .{} },
+        .deb => .{ .deb = .{} },
+        .rpm => .{ .rpm = .{} },
+        .appimage => .{ .appimage = .{} },
+        .nsis => .{ .nsis = .{} },
+        .app => .{ .app = .{} },
+        .dmg => .{ .dmg = .{} },
+    };
+}
+
 /// Compression algorithm used for ZIP entries.
 pub const Compression = enum {
     /// Store entries without compression.

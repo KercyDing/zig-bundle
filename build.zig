@@ -10,6 +10,11 @@ pub fn add(b: *std.Build, options: Options) *BundleStep {
     return root.addWithBuildZig(b, options, @This());
 }
 
+/// Returns the default options for one format.
+pub fn standardFormats(format: Format) Formats {
+    return root.standardFormats(format);
+}
+
 /// Application metadata shared by every output format.
 pub const App = root.App;
 /// macOS application bundle options.

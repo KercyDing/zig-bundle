@@ -56,17 +56,6 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    const formats: bundle.Formats = switch (format) {
-        .zip => .{ .zip = .{} },
-        .tar_gz => .{ .tar_gz = .{} },
-        .deb => .{ .deb = .{} },
-        .rpm => .{ .rpm = .{} },
-        .appimage => .{ .appimage = .{} },
-        .nsis => .{ .nsis = .{} },
-        .app => .{ .app = .{} },
-        .dmg => .{ .dmg = .{} },
-    };
-
     const bundled = bundle.add(b, .{
         .app = .{
             .name = "MyApp",
@@ -91,12 +80,15 @@ pub fn build(b: *std.Build) void {
                 .{ .source = b.path("README.md"), .dest = "docs/README.md" },
             },
         },
-        .formats = formats,
+        .formats = bundle.standardFormats(format),
     });
 
     b.step("bundle", "Bundle application").dependOn(bundled.step);
 }
 ```
+
+`bundle.standardFormats(format)` maps a `bundle.Format` to its default options.
+Customize individual formats afterwards if needed.
 
 Select a format with `-Dformat`; the default is `zip`:
 
