@@ -2,7 +2,8 @@
 const builtin = @import("builtin");
 const std = @import("std");
 
-const bundle = @import("bundle.zig");
+const build_manifest = @import("build_manifest.zig");
+const manifest = @import("manifest.zig");
 const settings = @import("settings.zig");
 
 /// Configuration accepted by `add`; see `settings.Options`.
@@ -11,16 +12,9 @@ pub const Options = settings.Options;
 /// Build step that produces the configured bundles.
 pub const BundleStep = struct {
     /// Underlying build step. Depend on this to run the bundler.
-    step: std.Build.Step,
+    step: *std.Build.Step,
     /// Normalized configuration owned by the step.
     settings: settings.Settings,
-    /// Artifact paths produced by the last run.
-    artifacts: []const []const u8 = &.{},
-
-    /// Artifact paths produced by the last run.
-    pub fn getArtifacts(self: *const BundleStep) []const []const u8 {
-        return self.artifacts;
-    }
 };
 
 /// Registers a bundle step and returns it. Depend on `bundled.step` to run it.
@@ -28,12 +22,7 @@ pub const BundleStep = struct {
 pub fn add(b: *std.Build, options: Options, comptime build_zig: type) *BundleStep {
     const self = b.allocator.create(BundleStep) catch @panic("OOM");
     self.* = .{
-        .step = std.Build.Step.init(.{
-            .id = .custom,
-            .name = "bundle",
-            .owner = b,
-            .makeFn = make,
-        }),
+        .step = undefined,
         .settings = settings.Settings.init(b, options),
     };
 
@@ -42,50 +31,19 @@ pub fn add(b: *std.Build, options: Options, comptime build_zig: type) *BundleSte
             .bundled => if (nsisDependencyName()) |name| {
                 const lib = b.dependencyFromBuildZig(build_zig, .{});
                 if (lib.builder.lazyDependency(name, .{})) |dep| {
-                    if (builtin.os.tag == .windows) {
-                        self.settings.nsis_tool = dep.path("makensis.exe").getPath(lib.builder);
-                        self.settings.nsis_data_dir = std.fs.path.dirname(self.settings.nsis_tool.?) orelse null;
-                    } else {
-                        self.settings.nsis_tool = dep.path("makensis").getPath(lib.builder);
-                    }
+                    self.settings.nsis_tool = dep.path(if (builtin.os.tag == .windows) "makensis.exe" else "makensis");
                 }
             },
             .system => {},
             .dir => {
                 const dir = nsis.source.path.?;
                 const tool_name = if (builtin.os.tag == .windows) "makensis.exe" else "makensis";
-                self.settings.nsis_tool = std.fs.path.join(b.allocator, &.{ dir, tool_name }) catch @panic("OOM");
-                self.settings.nsis_data_dir = b.dupe(dir);
+                const tool = std.fs.path.join(b.allocator, &.{ dir, tool_name }) catch @panic("OOM");
+                self.settings.nsis_tool = .{ .cwd_relative = tool };
             },
         }
     }
 
-    self.step.dependOn(&options.input.executable.step);
-    for (self.settings.resources) |resource| {
-        resource.source.addStepDependencies(&self.step);
-    }
-    for (self.settings.icons.png) |icon| {
-        icon.addStepDependencies(&self.step);
-    }
-    if (self.settings.icons.ico) |icon| {
-        icon.addStepDependencies(&self.step);
-    }
-    if (self.settings.app_bundle != null or self.settings.dmg != null) {
-        if (self.settings.icons.icns) |icon| {
-            icon.addStepDependencies(&self.step);
-        }
-    }
-    if (self.settings.rpm) |rpm| {
-        for (rpm.assets) |asset| asset.source.addStepDependencies(&self.step);
-        if (rpm.maintainer_scripts) |scripts| scripts.addStepDependencies(&self.step);
-    }
-    if (self.settings.deb) |deb| {
-        if (deb.changelog) |changelog| changelog.addStepDependencies(&self.step);
-        if (deb.license_file) |license| license.addStepDependencies(&self.step);
-        if (deb.maintainer_scripts) |scripts| scripts.addStepDependencies(&self.step);
-        if (deb.triggers) |triggers| triggers.addStepDependencies(&self.step);
-        for (deb.assets) |asset| asset.source.addStepDependencies(&self.step);
-    }
     if (self.settings.enable_llvm_strip) {
         const llvm_strip = findLlvmStrip(b) orelse std.process.fatal(
             "zig-bundle: enable_llvm_strip requires 'llvm-strip' on PATH; install LLVM tools and retry",
@@ -96,11 +54,59 @@ pub fn add(b: *std.Build, options: Options, comptime build_zig: type) *BundleSte
         const stripped = strip.addOutputFileArg("stripped-executable");
         strip.addFileArg(options.input.executable.getEmittedBin());
 
-        self.step.dependOn(&strip.step);
         self.settings.stripped_executable = stripped;
     }
 
+    const prepared = build_manifest.prepare(b, &self.settings) catch |err| {
+        std.process.fatal("zig-bundle: failed to prepare bundle manifest: {t}", .{err});
+    };
+    const json = manifest.render(b.allocator, prepared.manifest) catch @panic("OOM");
+
+    const lib = b.dependencyFromBuildZig(build_zig, .{});
+    const runner_module = b.createModule(.{
+        .root_source_file = lib.path("src/runner.zig"),
+        .target = b.graph.host,
+        .optimize = .ReleaseSafe,
+    });
+    const runner = b.addExecutable(.{
+        .name = "zig-bundle-runner",
+        .root_module = runner_module,
+    });
+    const run = b.addRunArtifact(runner);
+    run.stdio = .inherit;
+
+    const write_files = b.addWriteFiles();
+    run.addFileArg(write_files.add("bundle.json", json));
+
+    for (prepared.paths) |path| {
+        if (isDirectory(b, path)) {
+            run.addDirectoryArg(path);
+        } else {
+            run.addFileArg(path);
+        }
+    }
+
+    const output_dir = run.addOutputDirectoryArg("bundle");
+    const install = b.addInstallDirectory(.{
+        .source_dir = output_dir,
+        .install_dir = .{ .custom = "bundle" },
+        .install_subdir = "",
+    });
+
+    self.step = &install.step;
     return self;
+}
+
+fn isDirectory(b: *std.Build, lazy_path: std.Build.LazyPath) bool {
+    const io = b.graph.io;
+    const path = switch (lazy_path) {
+        .src_path => |sp| sp.owner.root.joinString(b.allocator, sp.sub_path) catch return false,
+        .cwd_relative => |p| b.dupe(p),
+        .dependency => |dep| dep.dependency.builder.root.joinString(b.allocator, dep.sub_path) catch return false,
+        .generated, .relative => return false,
+    };
+    const stat = std.Io.Dir.cwd().statFile(io, path, .{}) catch return false;
+    return stat.kind == .directory;
 }
 
 /// Finds `llvm-strip` without resolving symlinks: distributions commonly
@@ -142,10 +148,4 @@ fn nsisDependencyName() ?[]const u8 {
         },
         else => null,
     };
-}
-
-fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) anyerror!void {
-    _ = options;
-    const self: *BundleStep = @fieldParentPtr("step", step);
-    self.artifacts = try bundle.project(step.owner, step, &self.settings);
 }

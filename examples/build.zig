@@ -9,12 +9,18 @@ pub fn build(b: *std.Build) void {
     const app_version = b.option([]const u8, "app-version", "Application version") orelse "0.1.0";
     const install_scope = b.option(bundle.NsisOptions.InstallScope, "scope", "NSIS install scope") orelse .current_user;
 
+    const nanoui = b.dependency(
+        "nanoui",
+        .{ .target = target, .optimize = optimize },
+    ).module("nanoui");
+
     const exe = b.addExecutable(.{
         .name = "hello-bundle",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
+            .imports = &.{.{ .name = "nanoui", .module = nanoui }},
         }),
     });
 
@@ -73,5 +79,5 @@ pub fn build(b: *std.Build) void {
         .enable_llvm_strip = false,
     });
 
-    b.step("bundle", "Bundle the application").dependOn(&bundled.step);
+    b.step("bundle", "Bundle the application").dependOn(bundled.step);
 }

@@ -6,17 +6,19 @@
 //!     .input = .{ .executable = exe },
 //!     .formats = .{ .zip = .{} },
 //! });
-//! b.step("bundle", "Bundle application").dependOn(&bundled.step);
+//! b.step("bundle", "Bundle application").dependOn(bundled.step);
 //! ```
 
 const std = @import("std");
 
 const app = @import("bundle/macos/app.zig");
 const appimage = @import("bundle/linux/appimage.zig");
+const build_manifest = @import("build_manifest.zig");
 const bundle = @import("bundle.zig");
 const capabilities = @import("capabilities.zig");
 const deb = @import("bundle/linux/deb.zig");
 const dmg = @import("bundle/macos/dmg.zig");
+const manifest = @import("manifest.zig");
 const nsis = @import("bundle/windows/nsis.zig");
 const resources = @import("bundle/common/resources.zig");
 const rpm = @import("bundle/linux/rpm.zig");
@@ -71,10 +73,12 @@ pub const BundleStep = step.BundleStep;
 test {
     std.testing.refAllDecls(app);
     std.testing.refAllDecls(appimage);
+    std.testing.refAllDecls(build_manifest);
     std.testing.refAllDecls(bundle);
     std.testing.refAllDecls(capabilities);
     std.testing.refAllDecls(deb);
     std.testing.refAllDecls(dmg);
+    std.testing.refAllDecls(manifest);
     std.testing.refAllDecls(nsis);
     std.testing.refAllDecls(resources);
     std.testing.refAllDecls(rpm);

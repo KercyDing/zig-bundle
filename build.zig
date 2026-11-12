@@ -64,12 +64,12 @@ pub fn build(b: *std.Build) void {
 }
 
 comptime {
-    const minimum = std.SemanticVersion.parse("0.16.0") catch unreachable;
+    const minimum = std.SemanticVersion.parse("0.17.0") catch unreachable;
 
     if (builtin.zig_version.order(minimum) == .lt) {
         @compileError(std.fmt.comptimePrint(
             \\Your version of Zig is too old.
-            \\Minimum required version: 0.16.0
+            \\Minimum required version: 0.17.0
         , .{}));
     }
 }

@@ -313,9 +313,7 @@ pub const Settings = struct {
     app_bundle: ?AppBundleOptions,
     dmg: ?DmgOptions,
     /// Resolved `makensis` executable.
-    nsis_tool: ?[]const u8 = null,
-    /// Resolved `NSISDIR`.
-    nsis_data_dir: ?[]const u8 = null,
+    nsis_tool: ?std.Build.LazyPath = null,
     /// Strip the executable with `llvm-strip` before packaging.
     enable_llvm_strip: bool,
     /// Produced by `step.add` when `enable_llvm_strip` is set.
@@ -599,11 +597,11 @@ test "llvm strip defaults to disabled" {
 }
 
 test "format matches capabilities" {
-    inline for (std.meta.fields(Format)) |field| {
-        try std.testing.expect(@hasField(capabilities.Format, field.name));
+    inline for (@typeInfo(Format).@"enum".field_names) |name| {
+        try std.testing.expect(@hasField(capabilities.Format, name));
     }
-    inline for (std.meta.fields(capabilities.Format)) |field| {
-        try std.testing.expect(@hasField(Format, field.name));
+    inline for (@typeInfo(capabilities.Format).@"enum".field_names) |name| {
+        try std.testing.expect(@hasField(Format, name));
     }
 }
 

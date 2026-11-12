@@ -555,7 +555,7 @@ const HeaderBuilder = struct {
         const region_offset: u32 = @intCast(store.items.len);
         var region_data: [16]u8 = undefined;
         std.mem.writeInt(u32, region_data[0..4], region_tag, .big);
-        std.mem.writeInt(u32, region_data[4..8], @intFromEnum(TagType.bin), .big);
+        std.mem.writeInt(u32, region_data[4..8], @backingInt(TagType.bin), .big);
         std.mem.writeInt(i32, region_data[8..12], -@as(i32, @intCast((self.records.items.len + 1) * 16)), .big);
         std.mem.writeInt(u32, region_data[12..16], 16, .big);
         try store.appendSlice(self.allocator, &region_data);
@@ -569,13 +569,13 @@ const HeaderBuilder = struct {
         try appendU32(&out, self.allocator, @intCast(store.items.len));
 
         try appendU32(&out, self.allocator, region_tag);
-        try appendU32(&out, self.allocator, @intFromEnum(TagType.bin));
+        try appendU32(&out, self.allocator, @backingInt(TagType.bin));
         try appendU32(&out, self.allocator, region_offset);
         try appendU32(&out, self.allocator, 16);
 
         for (indexes.items) |entry| {
             try appendU32(&out, self.allocator, entry.tag);
-            try appendU32(&out, self.allocator, @intFromEnum(entry.kind));
+            try appendU32(&out, self.allocator, @backingInt(entry.kind));
             try appendU32(&out, self.allocator, entry.offset);
             try appendU32(&out, self.allocator, entry.count);
         }

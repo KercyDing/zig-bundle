@@ -7,7 +7,7 @@ reimplemented in Zig and designed around `std.Build`.
 
 ## Requirements
 
-- Zig 0.16.0 or newer.
+- Zig 0.17.0 or newer.
 
 ## Supported formats
 
@@ -102,7 +102,7 @@ pub fn build(b: *std.Build) void {
         .formats = formats,
     });
 
-    b.step("bundle", "Bundle application").dependOn(&bundled.step);
+    b.step("bundle", "Bundle application").dependOn(bundled.step);
 }
 ```
 
@@ -237,7 +237,7 @@ architecture-appropriate `Program Files` (all users, requires elevation),
 registers an uninstall entry, and creates Start Menu/desktop shortcuts. The
 finish page lets the user toggle Start Menu, desktop, and run choices.
 
-A complete example lives in [`examples/`](examples).
+A complete example lives in [`examples/`](examples); it is a nanoui GUI app.
 
 ## Development
 

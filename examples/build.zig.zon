@@ -2,10 +2,14 @@
     .name = .hello_bundle,
     .version = "0.1.0",
     .fingerprint = 0xcd6bc8ba27398b0a,
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     .dependencies = .{
         .bundle = .{
             .path = "../",
+        },
+        .nanoui = .{
+            .url = "git+https://github.com/justrach/nanoui?ref=main#66d1d8a44268d96f18081c062b0c8565dd0983f7",
+            .hash = "nanoui-0.14.0-we0KMVUDPAAsG1gOF9Uuf0fvrQWLW07Z1MdQ8pWRrIVY",
         },
     },
     .paths = .{
@@ -13,5 +17,6 @@
         "build.zig.zon",
         "src",
         "assets",
+        "icons",
     },
 }

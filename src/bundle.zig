@@ -10,55 +10,28 @@ const icons = @import("bundle/common/icons.zig");
 const nsis = @import("bundle/windows/nsis.zig");
 const output = @import("bundle/common/output.zig");
 const rpm = @import("bundle/linux/rpm.zig");
-const settings = @import("settings.zig");
+const manifest = @import("manifest.zig");
 const staging = @import("bundle/common/staging.zig");
 const tar_gz = @import("bundle/common/tar_gz.zig");
 const zip = @import("bundle/common/zip.zig");
 
 const Io = std.Io;
-const Settings = settings.Settings;
+const Manifest = manifest.Manifest;
 
 /// Builds every configured bundle and returns the artifact paths.
 pub fn project(
-    b: *std.Build,
-    step: *std.Build.Step,
-    config: *const Settings,
+    io: Io,
+    env_map: *const std.process.Environ.Map,
+    config: *const Manifest,
+    paths: []const []const u8,
+    output_root: []const u8,
+    allocator: std.mem.Allocator,
 ) ![]const []const u8 {
-    const io = b.graph.io;
-    const mtime = tar_gz.parseSourceDateEpoch(b.graph.environ_map.get("SOURCE_DATE_EPOCH"));
-
-    var arena_state = std.heap.ArenaAllocator.init(b.allocator);
+    var arena_state = std.heap.ArenaAllocator.init(allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
 
-    const target = config.executable.root_module.resolved_target orelse b.graph.host;
-    const target_name = try std.fmt.allocPrint(arena, "{s}-{s}", .{
-        @tagName(target.result.cpu.arch),
-        @tagName(target.result.os.tag),
-    });
-
-    const deb_arch: ?[]const u8 = if (config.deb != null)
-        deb.archName(target.result.cpu.arch) catch {
-            return step.fail("unsupported architecture for deb: {s}", .{@tagName(target.result.cpu.arch)});
-        }
-    else
-        null;
-
-    const rpm_arch: ?[]const u8 = if (config.rpm != null)
-        rpm.archName(target.result.cpu.arch) catch {
-            return step.fail("unsupported architecture for rpm: {s}", .{@tagName(target.result.cpu.arch)});
-        }
-    else
-        null;
-
-    const appimage_arch: ?[]const u8 = if (config.appimage != null)
-        appimage.archName(target.result.cpu.arch) catch {
-            return step.fail("unsupported architecture for appimage: {s}", .{@tagName(target.result.cpu.arch)});
-        }
-    else
-        null;
-
-    var staged = try staging.prepare(b, step, config, arena);
+    var staged = try staging.prepare(io, config, paths, arena);
     defer staged.payload.deinit(arena);
     const payload = staged.payload;
     const png_icons = staged.png_icons;
@@ -66,12 +39,10 @@ pub fn project(
     const icns_path = staged.icns_path;
 
     var artifacts: std.ArrayList([]const u8) = .empty;
-    errdefer artifacts.deinit(b.allocator);
+    errdefer artifacts.deinit(allocator);
 
-    const output_root = b.getInstallPath(.prefix, "bundle");
-
-    if (config.zip) |options| {
-        const path = try output.artifactPath(io, arena, output_root, .zip, config, target_name);
+    if (config.formats.zip) |options| {
+        const path = try output.artifactPath(io, arena, output_root, .zip, config.name, config.version, config.target_name);
         var file = try output.create(io, path);
         defer file.close(io);
         zip.write(io, file, payload.entries.items, arena, .{
@@ -81,22 +52,22 @@ pub fn project(
             },
             .level = options.level,
         }) catch |err| {
-            return step.fail("failed to create '{s}': {t}", .{ path, err });
+            return fail("failed to create '{s}': {t}", .{ path, err });
         };
-        try artifacts.append(b.allocator, b.dupe(path));
+        try artifacts.append(allocator, try allocator.dupe(u8, path));
     }
 
-    if (config.tar_gz) |options| {
-        const path = try output.artifactPath(io, arena, output_root, .tar_gz, config, target_name);
+    if (config.formats.tar_gz) |options| {
+        const path = try output.artifactPath(io, arena, output_root, .tar_gz, config.name, config.version, config.target_name);
         var file = try output.create(io, path);
         defer file.close(io);
-        tar_gz.write(io, file, payload.entries.items, .{ .level = options.level, .mtime = mtime }) catch |err| {
-            return step.fail("failed to create '{s}': {t}", .{ path, err });
+        tar_gz.write(io, file, payload.entries.items, .{ .level = options.level, .mtime = config.mtime }) catch |err| {
+            return fail("failed to create '{s}': {t}", .{ path, err });
         };
-        try artifacts.append(b.allocator, b.dupe(path));
+        try artifacts.append(allocator, try allocator.dupe(u8, path));
     }
 
-    if (config.deb) |options| {
+    if (config.formats.deb) |options| {
         const dir = try output.formatDir(io, arena, output_root, .deb);
 
         const deb_version = if (options.revision) |revision|
@@ -107,7 +78,7 @@ pub fn project(
         const package_basename = try std.fmt.allocPrint(arena, "{s}_{s}_{s}", .{
             config.name,
             deb_version,
-            deb_arch.?,
+            config.deb_arch.?,
         });
         const file_name = try std.fmt.allocPrint(arena, "{s}{s}", .{
             package_basename,
@@ -116,29 +87,29 @@ pub fn project(
         const path = try std.fs.path.join(arena, &.{ dir, file_name });
 
         const changelog_path: ?[]const u8 = if (options.changelog) |changelog|
-            try staging.resolveLazyPath(b, step, changelog, arena)
+            paths[changelog]
         else
             null;
 
         const license_path: ?[]const u8 = if (options.license_file) |license|
-            try staging.resolveLazyPath(b, step, license, arena)
+            paths[license]
         else
             null;
 
         const maintainer_scripts_path: ?[]const u8 = if (options.maintainer_scripts) |scripts|
-            try staging.resolveLazyPath(b, step, scripts, arena)
+            paths[scripts]
         else
             null;
 
         const triggers_path: ?[]const u8 = if (options.triggers) |triggers|
-            try staging.resolveLazyPath(b, step, triggers, arena)
+            paths[triggers]
         else
             null;
 
         const deb_assets = try arena.alloc(deb.Asset, options.assets.len);
         for (options.assets, deb_assets) |asset, *dest| {
             dest.* = .{
-                .source_path = try staging.resolveLazyPath(b, step, asset.source, arena),
+                .source_path = paths[asset.path],
                 .dest = asset.dest,
                 .mode = asset.mode,
             };
@@ -156,7 +127,7 @@ pub fn project(
             .license = config.license,
             .categories = config.categories,
             .copyright = options.copyright orelse config.copyright,
-            .executable_name = config.executable.out_filename,
+            .executable_name = config.executable_name,
             .payload = payload.entries.items,
             .icons = png_icons,
             .changelog_path = changelog_path,
@@ -165,7 +136,7 @@ pub fn project(
             .assets = deb_assets,
             .maintainer_scripts_path = maintainer_scripts_path,
             .triggers_path = triggers_path,
-            .mtime = mtime,
+            .mtime = config.mtime,
             .options = .{
                 .depends = options.depends,
                 .pre_depends = options.pre_depends,
@@ -179,43 +150,43 @@ pub fn project(
                 .section = options.section,
                 .priority = options.priority,
                 .homepage = options.homepage,
-                .multi_arch = if (options.multi_arch) |multi_arch| @tagName(multi_arch) else null,
+                .multi_arch = options.multi_arch,
                 .conf_files = options.conf_files,
             },
-        }, deb_arch.?, dir, package_basename, arena) catch |err| {
-            return step.fail("failed to create '{s}': {t}", .{ path, err });
+        }, config.deb_arch.?, dir, package_basename, arena) catch |err| {
+            return fail("failed to create '{s}': {t}", .{ path, err });
         };
 
-        try artifacts.append(b.allocator, b.dupe(path));
+        try artifacts.append(allocator, try allocator.dupe(u8, path));
     }
 
-    if (config.rpm) |options| {
+    if (config.formats.rpm) |options| {
         const dir = try output.formatDir(io, arena, output_root, .rpm);
         const package = try deb.toKebabCase(arena, config.name);
         const package_version = rpm.packageVersion(arena, config.version) catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
-            else => return step.fail("invalid rpm version '{s}'", .{config.version}),
+            else => return fail("invalid rpm version '{s}'", .{config.version}),
         };
         rpm.validateRelease(options.release) catch {
-            return step.fail("invalid rpm release '{s}'", .{options.release});
+            return fail("invalid rpm release '{s}'", .{options.release});
         };
         const package_basename = try std.fmt.allocPrint(arena, "{s}-{s}-{s}.{s}.rpm", .{
             package,
             package_version,
             options.release,
-            rpm_arch.?,
+            config.rpm_arch.?,
         });
         const path = try std.fs.path.join(arena, &.{ dir, package_basename });
 
         const rpm_scripts: ?[]const u8 = if (options.maintainer_scripts) |scripts|
-            try staging.resolveLazyPath(b, step, scripts, arena)
+            paths[scripts]
         else
             null;
 
         const rpm_assets = try arena.alloc(rpm.Asset, options.assets.len);
         for (options.assets, rpm_assets) |asset, *dest| {
             dest.* = .{
-                .source_path = try staging.resolveLazyPath(b, step, asset.source, arena),
+                .source_path = paths[asset.path],
                 .dest = asset.dest,
                 .mode = asset.mode,
             };
@@ -231,13 +202,13 @@ pub fn project(
             .description = config.description,
             .license = config.license,
             .categories = config.categories,
-            .arch = rpm_arch.?,
-            .executable_name = config.executable.out_filename,
+            .arch = config.rpm_arch.?,
+            .executable_name = config.executable_name,
             .payload = payload.entries.items,
             .icons = png_icons,
             .assets = rpm_assets,
             .maintainer_scripts_path = rpm_scripts,
-            .mtime = mtime,
+            .mtime = config.mtime,
             .options = .{
                 .release = options.release,
                 .epoch = options.epoch,
@@ -250,48 +221,48 @@ pub fn project(
                 .obsoletes = options.obsoletes,
             },
         }, arena) catch |err| {
-            return step.fail("failed to create '{s}': {t}", .{ path, err });
+            return fail("failed to create '{s}': {t}", .{ path, err });
         };
 
-        try artifacts.append(b.allocator, b.dupe(path));
+        try artifacts.append(allocator, try allocator.dupe(u8, path));
     }
 
-    if (config.appimage) |options| {
+    if (config.formats.appimage) |options| {
         const dir = try output.formatDir(io, arena, output_root, .appimage);
         const package = try deb.toKebabCase(arena, config.name);
         const file_name = try std.fmt.allocPrint(arena, "{s}-{s}-{s}.AppImage", .{
             package,
             config.version,
-            appimage_arch.?,
+            config.appimage_arch.?,
         });
         const path = try std.fs.path.join(arena, &.{ dir, file_name });
 
-        appimage.bundle(io, &b.graph.environ_map, .{
+        appimage.bundle(io, env_map, .{
             .name = config.name,
             .version = config.version,
-            .executable_name = config.executable.out_filename,
+            .executable_name = config.executable_name,
             .description = config.description,
             .categories = config.categories,
-            .arch = appimage_arch.?,
+            .arch = config.appimage_arch.?,
             .payload = payload.entries.items,
             .icons = png_icons,
             .appimagetool = options.appimagetool,
         }, dir, path, arena) catch |err| switch (err) {
-            error.AppImageToolNotFound => return step.fail(
+            error.AppImageToolNotFound => return fail(
                 "appimagetool not found; install it or set appimage.appimagetool",
                 .{},
             ),
-            error.MissingIcon => return step.fail(
+            error.MissingIcon => return fail(
                 "appimage requires at least one square PNG icon",
                 .{},
             ),
-            else => return step.fail("failed to create '{s}': {t}", .{ path, err }),
+            else => return fail("failed to create '{s}': {t}", .{ path, err }),
         };
 
-        try artifacts.append(b.allocator, b.dupe(path));
+        try artifacts.append(allocator, try allocator.dupe(u8, path));
     }
 
-    if (config.app_bundle != null) {
+    if (config.formats.app) {
         const dir = try output.formatDir(io, arena, output_root, .app);
         const app_dir = try std.fmt.allocPrint(arena, "{s}/{s}.app", .{ dir, config.name });
 
@@ -299,27 +270,27 @@ pub fn project(
             .name = config.name,
             .identifier = config.identifier,
             .version = config.version,
-            .executable_name = config.executable.out_filename,
+            .executable_name = config.executable_name,
             .payload = payload.entries.items,
             .icons = png_icons,
             .icns_path = icns_path,
         }, arena) catch |err| switch (err) {
-            error.MissingIcon => return step.fail(
+            error.MissingIcon => return fail(
                 "macOS app requires an ICNS or at least one square PNG icon",
                 .{},
             ),
-            else => return step.fail("failed to create '{s}': {t}", .{ app_dir, err }),
+            else => return fail("failed to create '{s}': {t}", .{ app_dir, err }),
         };
 
-        try artifacts.append(b.allocator, b.dupe(app_dir));
+        try artifacts.append(allocator, try allocator.dupe(u8, app_dir));
     }
 
-    if (config.dmg != null) {
+    if (config.formats.dmg) {
         const dir = try output.formatDir(io, arena, output_root, .dmg);
         const file_name = try std.fmt.allocPrint(arena, "{s}_{s}_{s}.dmg", .{
             config.name,
             config.version,
-            @tagName(target.result.cpu.arch),
+            config.target_arch,
         });
         const path = try std.fs.path.join(arena, &.{ dir, file_name });
 
@@ -327,28 +298,28 @@ pub fn project(
             .name = config.name,
             .identifier = config.identifier,
             .version = config.version,
-            .executable_name = config.executable.out_filename,
+            .executable_name = config.executable_name,
             .payload = payload.entries.items,
             .icons = png_icons,
             .icns_path = icns_path,
         }, dir, path, arena) catch |err| switch (err) {
-            error.HdiutilNotFound => return step.fail(
+            error.HdiutilNotFound => return fail(
                 "hdiutil not found; dmg packaging requires a macOS host",
                 .{},
             ),
-            else => return step.fail("failed to create '{s}': {t}", .{ path, err }),
+            else => return fail("failed to create '{s}': {t}", .{ path, err }),
         };
 
-        try artifacts.append(b.allocator, b.dupe(path));
+        try artifacts.append(allocator, try allocator.dupe(u8, path));
     }
 
-    if (config.nsis) |options| {
+    if (config.formats.nsis) |options| {
         const dir = try output.formatDir(io, arena, output_root, .nsis);
 
         const file_name = try std.fmt.allocPrint(arena, "{s}_{s}_{s}-setup{s}", .{
             config.name,
             config.version,
-            @tagName(target.result.cpu.arch),
+            config.target_arch,
             capabilities.extension(.nsis),
         });
         const path = try std.fs.path.join(arena, &.{ dir, file_name });
@@ -368,13 +339,16 @@ pub fn project(
                 var icon_file = try Io.Dir.cwd().createFile(io, setup_icon_path.?, .{ .truncate = true });
                 defer icon_file.close(io);
                 icons.writeIco(io, icon_file, png_icons, arena) catch |err| {
-                    return step.fail("cannot build Windows icon: {t}", .{err});
+                    return fail("cannot build Windows icon: {t}", .{err});
                 };
             }
         }
         defer if (generated_icon_path) |generated_path| Io.Dir.cwd().deleteFile(io, generated_path) catch {};
 
-        nsis.bundle(io, &b.graph.environ_map, .{
+        const makensis_path: ?[]const u8 = if (options.makensis) |index| paths[index] else null;
+        const nsis_dir: ?[]const u8 = if (makensis_path) |tool| std.fs.path.dirname(tool) else null;
+
+        nsis.bundle(io, env_map, .{
             .name = config.name,
             .identifier = config.identifier,
             .version = config.version,
@@ -384,29 +358,29 @@ pub fn project(
                 .current_user => .current_user,
                 .all_users => .all_users,
             },
-            .arch = @tagName(target.result.cpu.arch),
-            .executable_name = config.executable.out_filename,
-            .start_menu = options.shortcuts.start_menu,
-            .desktop = options.shortcuts.desktop,
+            .arch = config.target_arch,
+            .executable_name = config.executable_name,
+            .start_menu = options.start_menu,
+            .desktop = options.desktop,
             .launch = options.launch_app,
             .payload = payload.entries.items,
             .icon_path = setup_icon_path,
             .icon_name = icon_name,
-            .makensis = config.nsis_tool,
-            .nsis_dir = config.nsis_data_dir,
+            .makensis = makensis_path,
+            .nsis_dir = nsis_dir,
         }, dir, path, arena) catch |err| switch (err) {
-            error.MakensisNotFound => return step.fail(
+            error.MakensisNotFound => return fail(
                 "makensis not found; configure nsis.nsis_dir",
                 .{},
             ),
-            else => return step.fail("failed to create '{s}': {t}", .{ path, err }),
+            else => return fail("failed to create '{s}': {t}", .{ path, err }),
         };
 
-        try artifacts.append(b.allocator, b.dupe(path));
+        try artifacts.append(allocator, try allocator.dupe(u8, path));
     }
 
     if (artifacts.items.len == 0) {
-        return step.fail("no bundle formats were configured", .{});
+        return fail("no bundle formats were configured", .{});
     }
 
     std.debug.print("zig-bundle: finished {d} bundle(s):\n", .{artifacts.items.len});
@@ -422,5 +396,10 @@ pub fn project(
         }
     }
 
-    return artifacts.toOwnedSlice(b.allocator);
+    return artifacts.toOwnedSlice(allocator);
+}
+
+fn fail(comptime fmt: []const u8, args: anytype) error{BundleFailed} {
+    std.debug.print("zig-bundle: " ++ fmt ++ "\n", args);
+    return error.BundleFailed;
 }

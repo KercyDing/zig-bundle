@@ -2,8 +2,6 @@
 const std = @import("std");
 
 const capabilities = @import("../../capabilities.zig");
-const settings = @import("../../settings.zig");
-
 const Io = std.Io;
 
 /// Builds the output path for a format artifact.
@@ -12,14 +10,15 @@ pub fn artifactPath(
     allocator: std.mem.Allocator,
     output_root: []const u8,
     format: capabilities.Format,
-    config: *const settings.Settings,
+    name: []const u8,
+    version: []const u8,
     target_name: []const u8,
 ) ![]const u8 {
     const dir = try formatDir(io, allocator, output_root, format);
 
     const file_name = try std.fmt.allocPrint(allocator, "{s}-{s}-{s}{s}", .{
-        config.name,
-        config.version,
+        name,
+        version,
         target_name,
         capabilities.extension(format),
     });
