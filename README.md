@@ -110,25 +110,29 @@ zig build bundle -Dformat=setup_exe -Dtarget=x86_64-windows-gnu
 ```
 
 Debian metadata defaults `maintainer` to `app.publisher`, `copyright` to
-`app.copyright`, and generates a changelog when none is supplied:
+`app.copyright`, and generates a Debian-format changelog when none is supplied:
 
 ```zig
 .deb = .{
-    .depends = &.{ "libc6" },
-    .recommends = &.{ "xdg-utils" },
-    .maintainer = "Example <example@example.com>",
-    .copyright = "Copyright 2026 Example",
     .homepage = "https://example.com",
+    // Appended to the package version: 1.0.0-1.
     .revision = "1",
+    .recommends = &.{ "xdg-utils" },
+    // Included in the copyright file.
     .license_file = b.path("LICENSE"),
-    .changelog = b.path("CHANGELOG.md"),
+    // Installed as changelog.gz.
+    .changelog = b.path("debian/changelog"),
     .assets = &.{
-        .{ .source = b.path("assets/app.1.gz"), .dest = "usr/share/man/man1/" },
+        // Man pages must be gzip-compressed.
+        .{ .source = b.path("assets/myapp.1.gz"), .dest = "usr/share/man/man1/" },
         .{ .source = b.path("config.toml"), .dest = "etc/myapp/config.toml" },
     },
 },
 ```
 
+`maintainer` and `copyright` override the app-level values. `depends` accepts
+Debian relationship strings; static Zig binaries need no runtime dependencies,
+while dynamically linked glibc builds generally need `libc6 (>= ...)`.
 `pre_depends`, `suggests`, `enhances`, `conflicts`, `breaks`, `replaces`,
 `provides`, and `multi_arch` (`.same` / `.foreign`) are also available.
 Assets accept files or directories; a trailing `/` means the destination is a
