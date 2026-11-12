@@ -6,6 +6,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const format = b.option(bundle.Format, "format", "Bundle format") orelse .zip;
+    const app_version = b.option([]const u8, "app-version", "Application version") orelse "0.1.0";
 
     const exe = b.addExecutable(.{
         .name = "hello-bundle",
@@ -45,7 +46,7 @@ pub fn build(b: *std.Build) void {
         .app = .{
             .name = "HelloBundle",
             .identifier = "com.example.hellobundle",
-            .version = "0.1.0",
+            .version = app_version,
             .publisher = "Example <example@example.com>",
             .copyright = "Copyright 2026 Example",
             .license = "MIT",
