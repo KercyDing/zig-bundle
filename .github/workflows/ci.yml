@@ -72,7 +72,8 @@ jobs:
       - name: macOS DMG
         if: runner.os == 'macOS'
         working-directory: examples
-        run: zig build bundle -Dformat=dmg -Dtarget=${{ matrix.target }}
+        # Finder layout needs a desktop session, so keep CI headless.
+        run: zig build bundle -Dformat=dmg -Dtarget=${{ matrix.target }} -Ddmg-layout=false
 
   windows-installer:
     name: Windows installer smoke test

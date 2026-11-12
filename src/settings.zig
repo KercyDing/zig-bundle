@@ -270,8 +270,46 @@ pub const NsisSource = struct {
 /// macOS application bundle options.
 pub const AppBundleOptions = struct {};
 
+/// DMG compression format passed to `hdiutil`.
+pub const DmgCompression = enum { udzo, udbz, ulfo };
+
+/// Finder window size for a DMG layout.
+pub const DmgSize = struct {
+    width: u32 = 660,
+    height: u32 = 420,
+};
+
+/// Icon position inside the Finder window.
+pub const DmgPosition = struct {
+    x: i32,
+    y: i32,
+};
+
+/// Optional Finder layout for a DMG.
+pub const DmgLayout = struct {
+    /// PNG background image copied into `.background/`.
+    background: ?std.Build.LazyPath = null,
+    /// Finder window size.
+    window_size: DmgSize = .{},
+    /// Finder icon size.
+    icon_size: u32 = 128,
+    /// Position of the application icon.
+    app_position: DmgPosition = .{ .x = 180, .y = 220 },
+    /// Position of the `/Applications` link.
+    applications_position: DmgPosition = .{ .x = 480, .y = 220 },
+};
+
 /// macOS disk image options.
-pub const DmgOptions = struct {};
+pub const DmgOptions = struct {
+    /// Volume name. Defaults to `app.name`.
+    volume_name: ?[]const u8 = null,
+    /// Image compression. `udzo` is the default.
+    compression: DmgCompression = .udzo,
+    /// Add an `/Applications` symlink to the image.
+    applications_link: bool = true,
+    /// Optional Finder background and icon layout.
+    layout: ?DmgLayout = null,
+};
 
 /// Windows installer options.
 pub const NsisOptions = struct {
@@ -394,6 +432,19 @@ pub const Settings = struct {
             }
         }
 
+        if (options.formats.dmg) |dmg| {
+            if (dmg.volume_name) |volume_name| {
+                if (volume_name.len == 0) {
+                    std.process.fatal("zig-bundle: dmg volume name must not be empty", .{});
+                }
+                for (volume_name) |c| {
+                    if (c == 0 or c == '/' or c == '\\') {
+                        std.process.fatal("zig-bundle: dmg volume name '{s}' contains an invalid character", .{volume_name});
+                    }
+                }
+            }
+        }
+
         const target = (options.input.executable.root_module.resolved_target orelse b.graph.host).result;
         const host = b.graph.host.result;
         if (options.formats.zip != null) validateFormat(.zip, host, target);
@@ -455,7 +506,18 @@ pub const Settings = struct {
         } else null;
 
         const app_bundle: ?AppBundleOptions = if (options.formats.app != null) .{} else null;
-        const dmg: ?DmgOptions = if (options.formats.dmg != null) .{} else null;
+        const dmg: ?DmgOptions = if (options.formats.dmg) |dmg_options| DmgOptions{
+            .volume_name = if (dmg_options.volume_name) |name| b.dupe(name) else null,
+            .compression = dmg_options.compression,
+            .applications_link = dmg_options.applications_link,
+            .layout = if (dmg_options.layout) |layout| DmgLayout{
+                .background = layout.background,
+                .window_size = layout.window_size,
+                .icon_size = layout.icon_size,
+                .app_position = layout.app_position,
+                .applications_position = layout.applications_position,
+            } else null,
+        } else null;
 
         const deb = if (options.formats.deb) |deb_options| blk: {
             const assets = b.allocator.alloc(Asset, deb_options.assets.len) catch @panic("OOM");
@@ -634,4 +696,13 @@ test "nsis toolchain source variants" {
 
     const custom = NsisOptions{ .source = .dir("/opt/nsis") };
     try std.testing.expectEqualStrings("/opt/nsis", custom.source.path.?);
+}
+
+test "dmg options defaults" {
+    const options: DmgOptions = .{};
+
+    try std.testing.expect(options.volume_name == null);
+    try std.testing.expectEqual(DmgCompression.udzo, options.compression);
+    try std.testing.expect(options.applications_link);
+    try std.testing.expect(options.layout == null);
 }

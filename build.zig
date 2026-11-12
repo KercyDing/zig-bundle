@@ -29,8 +29,16 @@ pub const BundleStep = root.BundleStep;
 pub const Compression = root.Compression;
 /// Debian package options.
 pub const DebOptions = root.DebOptions;
+/// DMG compression formats.
+pub const DmgCompression = root.DmgCompression;
+/// Finder layout for a DMG.
+pub const DmgLayout = root.DmgLayout;
 /// macOS disk image options.
 pub const DmgOptions = root.DmgOptions;
+/// Icon position inside a DMG layout.
+pub const DmgPosition = root.DmgPosition;
+/// Finder window size for a DMG layout.
+pub const DmgSize = root.DmgSize;
 /// Bundle formats selectable from a build option.
 pub const Format = root.Format;
 /// Options for each enabled bundle format.

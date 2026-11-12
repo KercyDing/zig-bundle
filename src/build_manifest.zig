@@ -131,6 +131,26 @@ pub fn prepare(b: *std.Build, config: *const settings.Settings) !Prepared {
         .appimagetool = options.appimagetool,
     } else null;
 
+    const dmg = if (config.dmg) |options| manifest.Dmg{
+        .volume_name = options.volume_name,
+        .compression = switch (options.compression) {
+            .udzo => .udzo,
+            .udbz => .udbz,
+            .ulfo => .ulfo,
+        },
+        .applications_link = options.applications_link,
+        .layout = if (options.layout) |layout| manifest.DmgLayout{
+            .background = if (layout.background) |path| try addPath(b.allocator, &paths, path) else null,
+            .window_width = layout.window_size.width,
+            .window_height = layout.window_size.height,
+            .icon_size = layout.icon_size,
+            .app_x = layout.app_position.x,
+            .app_y = layout.app_position.y,
+            .applications_x = layout.applications_position.x,
+            .applications_y = layout.applications_position.y,
+        } else null,
+    } else null;
+
     const nsis = if (config.nsis) |options| manifest.Nsis{
         .install_scope = switch (options.install_scope) {
             .current_user => .current_user,
@@ -173,7 +193,7 @@ pub fn prepare(b: *std.Build, config: *const settings.Settings) !Prepared {
                 .appimage = appimage,
                 .nsis = nsis,
                 .app = config.app_bundle != null,
-                .dmg = config.dmg != null,
+                .dmg = dmg,
             },
         },
         .paths = try paths.toOwnedSlice(b.allocator),

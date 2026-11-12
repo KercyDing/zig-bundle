@@ -285,7 +285,7 @@ pub fn project(
         try artifacts.append(allocator, try allocator.dupe(u8, app_dir));
     }
 
-    if (config.formats.dmg) {
+    if (config.formats.dmg) |options| {
         const dir = try output.formatDir(io, arena, output_root, .dmg);
         const file_name = try std.fmt.allocPrint(arena, "{s}_{s}_{s}.dmg", .{
             config.name,
@@ -302,8 +302,25 @@ pub fn project(
             .payload = payload.entries.items,
             .icons = png_icons,
             .icns_path = icns_path,
+            .volume_name = options.volume_name,
+            .compression = switch (options.compression) {
+                .udzo => .udzo,
+                .udbz => .udbz,
+                .ulfo => .ulfo,
+            },
+            .applications_link = options.applications_link,
+            .layout = if (options.layout) |layout| dmg.Layout{
+                .background = if (layout.background) |index| paths[index] else null,
+                .window_size = .{
+                    .width = layout.window_width,
+                    .height = layout.window_height,
+                },
+                .icon_size = layout.icon_size,
+                .app_position = .{ .x = layout.app_x, .y = layout.app_y },
+                .applications_position = .{ .x = layout.applications_x, .y = layout.applications_y },
+            } else null,
         }, dir, path, arena) catch |err| switch (err) {
-            error.HdiutilNotFound => return fail(
+            error.DmgToolNotFound => return fail(
                 "hdiutil not found; dmg packaging requires a macOS host",
                 .{},
             ),

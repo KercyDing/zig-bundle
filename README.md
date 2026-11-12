@@ -324,7 +324,30 @@ separately on a macOS host when distributing the app.
 ### macOS DMG
 
 `dmg` requires a macOS host and macOS target. It stages the `.app` with an
-`/Applications` symlink and invokes `hdiutil` to write a UDZO image.
+`/Applications` symlink and invokes `hdiutil`.
+
+```zig
+.dmg = .{
+    // Defaults to app.name.
+    .volume_name = "MyApp",
+    // .udzo (default), .udbz, or .ulfo.
+    .compression = .udzo,
+    // Add an /Applications symlink.
+    .applications_link = true,
+    // Optional Finder layout.
+    .layout = .{
+        .background = b.path("assets/dmg.png"),
+        .window_size = .{ .width = 660, .height = 476 },
+        .icon_size = 96,
+        .app_position = .{ .x = 180, .y = 230 },
+        .applications_position = .{ .x = 480, .y = 230 },
+    },
+},
+```
+
+When `layout` is set, the DMG is created as a read-write image, mounted, adjusted
+through Finder AppleScript, then converted to the requested format. This
+requires a Finder session, so it is intended for desktop macOS use.
 
 `dmg` contains the app; it does not implicitly enable the `app` output. Enable
 both if you also want the unpacked directory:
@@ -333,7 +356,9 @@ both if you also want the unpacked directory:
 .formats = .{ .app = .{}, .dmg = .{} },
 ```
 
-Finder background images and icon layout are not implemented yet.
+The background image is copied into `.background/` and hidden from Finder.
+Finder window size, icon size, and icon positions are optional; the values above
+are the defaults.
 
 ## Example
 

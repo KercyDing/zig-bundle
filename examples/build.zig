@@ -8,6 +8,7 @@ pub fn build(b: *std.Build) void {
     const format = b.option(bundle.Format, "format", "Bundle format") orelse .zip;
     const app_version = b.option([]const u8, "app-version", "Application version") orelse "0.1.0";
     const install_scope = b.option(bundle.NsisOptions.InstallScope, "scope", "NSIS install scope") orelse .current_user;
+    const dmg_layout = b.option(bool, "dmg-layout", "Apply the example DMG layout") orelse true;
 
     const exe = b.addExecutable(.{
         .name = "hello-bundle",
@@ -22,6 +23,17 @@ pub fn build(b: *std.Build) void {
     if (formats.nsis) |*nsis| {
         nsis.install_scope = install_scope;
         nsis.shortcuts = .{ .start_menu = true, .desktop = true };
+    }
+    if (formats.dmg) |*dmg| {
+        if (dmg_layout) {
+            dmg.layout = .{
+                .background = b.path("assets/dmg-background.png"),
+                .window_size = .{ .width = 660, .height = 476 },
+                .icon_size = 128,
+                .app_position = .{ .x = 180, .y = 230 },
+                .applications_position = .{ .x = 480, .y = 230 },
+            };
+        }
     }
 
     b.installArtifact(exe);

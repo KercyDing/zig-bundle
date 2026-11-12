@@ -68,6 +68,24 @@ pub const AppImage = struct {
     appimagetool: ?[]const u8 = null,
 };
 
+pub const DmgLayout = struct {
+    background: ?usize = null,
+    window_width: u32 = 660,
+    window_height: u32 = 420,
+    icon_size: u32 = 128,
+    app_x: i32 = 180,
+    app_y: i32 = 220,
+    applications_x: i32 = 480,
+    applications_y: i32 = 220,
+};
+
+pub const Dmg = struct {
+    volume_name: ?[]const u8 = null,
+    compression: enum { udzo, udbz, ulfo } = .udzo,
+    applications_link: bool = true,
+    layout: ?DmgLayout = null,
+};
+
 pub const Nsis = struct {
     install_scope: enum { current_user, all_users } = .current_user,
     start_menu: bool = true,
@@ -84,7 +102,7 @@ pub const Formats = struct {
     appimage: ?AppImage = null,
     nsis: ?Nsis = null,
     app: bool = false,
-    dmg: bool = false,
+    dmg: ?Dmg = null,
 };
 
 pub const Manifest = struct {

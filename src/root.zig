@@ -47,8 +47,16 @@ pub const Asset = settings.Asset;
 pub const Compression = settings.Compression;
 /// Debian package options.
 pub const DebOptions = settings.DebOptions;
+/// DMG compression formats.
+pub const DmgCompression = settings.DmgCompression;
+/// Finder layout for a DMG.
+pub const DmgLayout = settings.DmgLayout;
 /// macOS disk image options.
 pub const DmgOptions = settings.DmgOptions;
+/// Icon position inside a DMG layout.
+pub const DmgPosition = settings.DmgPosition;
+/// Finder window size for a DMG layout.
+pub const DmgSize = settings.DmgSize;
 /// Bundle formats selectable from a build option.
 pub const Format = settings.Format;
 /// Options for each enabled bundle format.
