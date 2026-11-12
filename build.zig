@@ -10,6 +10,8 @@ pub const add = root.add;
 
 /// Application metadata shared by every output format.
 pub const App = root.App;
+/// AppImage options.
+pub const AppImageOptions = root.AppImageOptions;
 /// Additional file installed by a Debian package.
 pub const Asset = root.Asset;
 /// Build step that produces the configured bundles.

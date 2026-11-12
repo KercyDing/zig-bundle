@@ -20,6 +20,7 @@ pub fn build(b: *std.Build) void {
         .zip => .{ .zip = .{} },
         .tar_gz => .{ .tar_gz = .{} },
         .rpm => .{ .rpm = .{} },
+        .appimage => .{ .appimage = .{} },
         .deb => .{ .deb = .{
             .homepage = "https://example.com/hello-bundle",
             .assets = &.{

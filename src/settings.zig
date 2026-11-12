@@ -81,6 +81,8 @@ pub const Formats = struct {
     deb: ?DebOptions = null,
     /// RPM package. Requires a Linux target.
     rpm: ?RpmOptions = null,
+    /// AppImage. Requires a Linux target and `appimagetool`.
+    appimage: ?AppImageOptions = null,
     /// Windows installer. Requires a Windows target.
     setup_exe: ?SetupExeOptions = null,
 };
@@ -209,6 +211,12 @@ pub const RpmOptions = struct {
     maintainer_scripts: ?std.Build.LazyPath = null,
 };
 
+/// AppImage options.
+pub const AppImageOptions = struct {
+    /// `appimagetool` executable name or path. Defaults to searching `PATH`.
+    tool: ?[]const u8 = null,
+};
+
 /// Windows installer options.
 pub const SetupExeOptions = struct {
     /// Per-user install by default; `all_users` requires elevation.
@@ -256,6 +264,7 @@ pub const Settings = struct {
     tar_gz: ?TarGzOptions,
     deb: ?DebOptions,
     rpm: ?RpmOptions,
+    appimage: ?AppImageOptions,
     setup_exe: ?SetupExeOptions,
     /// Strip the executable with `llvm-strip` before packaging.
     enable_llvm_strip: bool,
@@ -291,6 +300,7 @@ pub const Settings = struct {
             options.formats.tar_gz == null and
             options.formats.deb == null and
             options.formats.rpm == null and
+            options.formats.appimage == null and
             options.formats.setup_exe == null)
         {
             std.process.fatal("zig-bundle: at least one output format must be enabled", .{});
@@ -328,6 +338,7 @@ pub const Settings = struct {
         if (options.formats.tar_gz != null) validateFormat(.tar_gz, host, target);
         if (options.formats.deb != null) validateFormat(.deb, host, target);
         if (options.formats.rpm != null) validateFormat(.rpm, host, target);
+        if (options.formats.appimage != null) validateFormat(.appimage, host, target);
         if (options.formats.setup_exe != null) validateFormat(.setup_exe, host, target);
 
         const resources = b.allocator.alloc(Resource, options.input.resources.len) catch @panic("OOM");
@@ -359,6 +370,12 @@ pub const Settings = struct {
                 .obsoletes = dupeStrings(b, rpm_options.obsoletes),
                 .assets = assets,
                 .maintainer_scripts = rpm_options.maintainer_scripts,
+            };
+        } else null;
+
+        const appimage = if (options.formats.appimage) |appimage_options| blk: {
+            break :blk AppImageOptions{
+                .tool = if (appimage_options.tool) |tool| b.dupe(tool) else null,
             };
         } else null;
 
@@ -422,6 +439,7 @@ pub const Settings = struct {
             .tar_gz = options.formats.tar_gz,
             .deb = deb,
             .rpm = rpm,
+            .appimage = appimage,
             .setup_exe = options.formats.setup_exe,
             .enable_llvm_strip = options.enable_llvm_strip,
         };
@@ -481,6 +499,7 @@ test "options default to a ZIP bundle" {
     try std.testing.expect(options.formats.tar_gz == null);
     try std.testing.expect(options.formats.deb == null);
     try std.testing.expect(options.formats.rpm == null);
+    try std.testing.expect(options.formats.appimage == null);
     try std.testing.expect(options.formats.setup_exe == null);
 }
 

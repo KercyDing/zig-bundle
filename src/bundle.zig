@@ -1,6 +1,7 @@
 //! Bundle orchestration and format dispatch.
 const std = @import("std");
 
+const appimage = @import("bundle/linux/appimage.zig");
 const capabilities = @import("capabilities.zig");
 const deb = @import("bundle/linux/deb.zig");
 const icons = @import("bundle/common/icons.zig");
@@ -44,6 +45,13 @@ pub fn project(
     const rpm_arch: ?[]const u8 = if (config.rpm != null)
         rpm.archName(target.result.cpu.arch) catch {
             return step.fail("unsupported architecture for rpm: {s}", .{@tagName(target.result.cpu.arch)});
+        }
+    else
+        null;
+
+    const appimage_arch: ?[]const u8 = if (config.appimage != null)
+        appimage.archName(target.result.cpu.arch) catch {
+            return step.fail("unsupported architecture for appimage: {s}", .{@tagName(target.result.cpu.arch)});
         }
     else
         null;
@@ -240,6 +248,41 @@ pub fn project(
             },
         }, arena) catch |err| {
             return step.fail("failed to create '{s}': {t}", .{ path, err });
+        };
+
+        try artifacts.append(b.allocator, b.dupe(path));
+    }
+
+    if (config.appimage) |options| {
+        const dir = try output.formatDir(io, arena, output_root, .appimage);
+        const package = try deb.toKebabCase(arena, config.name);
+        const file_name = try std.fmt.allocPrint(arena, "{s}-{s}-{s}.AppImage", .{
+            package,
+            config.version,
+            appimage_arch.?,
+        });
+        const path = try std.fs.path.join(arena, &.{ dir, file_name });
+
+        appimage.bundle(io, &b.graph.environ_map, .{
+            .name = config.name,
+            .version = config.version,
+            .executable_name = config.executable.out_filename,
+            .description = config.description,
+            .categories = config.categories,
+            .arch = appimage_arch.?,
+            .payload = payload.entries.items,
+            .icons = png_icons,
+            .tool = options.tool,
+        }, dir, path, arena) catch |err| switch (err) {
+            error.AppImageToolNotFound => return step.fail(
+                "appimagetool not found; install it or set appimage.tool",
+                .{},
+            ),
+            error.MissingIcon => return step.fail(
+                "appimage requires at least one square PNG icon",
+                .{},
+            ),
+            else => return step.fail("failed to create '{s}': {t}", .{ path, err }),
         };
 
         try artifacts.append(b.allocator, b.dupe(path));

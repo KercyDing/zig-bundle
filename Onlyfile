@@ -46,6 +46,11 @@ group example {
     rpm():
         cd examples && zig build bundle -Dformat=rpm -Dtarget=x86_64-linux-gnu
 
+    [help] Package the example application for Linux as an AppImage
+    [fail] Example AppImage package failed.
+    appimage():
+        cd examples && zig build bundle -Dformat=appimage -Dtarget=x86_64-linux-gnu
+
     [help] Package the example application as a Windows Setup.exe
     [fail] Example Setup.exe package failed.
     setup_exe():

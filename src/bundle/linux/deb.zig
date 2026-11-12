@@ -1,6 +1,7 @@
 //! Native Debian package writer.
 const std = @import("std");
 
+const desktop_entry = @import("../common/desktop.zig");
 const icons = @import("../common/icons.zig");
 const resources = @import("../common/resources.zig");
 const tar_gz = @import("../common/tar_gz.zig");
@@ -721,36 +722,13 @@ fn loadChangelog(
 }
 
 fn renderDesktop(allocator: std.mem.Allocator, config: Config, has_icon: bool) ![]u8 {
-    var allocating: std.Io.Writer.Allocating = .init(allocator);
-    errdefer allocating.deinit();
-    const writer = &allocating.writer;
-
-    try writer.writeAll("[Desktop Entry]\n");
-    if (config.description) |description| {
-        const comment = firstLine(description);
-        if (comment.len > 0) try writer.print("Comment={s}\n", .{comment});
-    }
-
-    const needs_quotes = std.mem.indexOfAny(u8, config.executable_name, " \t") != null;
-    if (needs_quotes) {
-        try writer.print("Exec=\"{s}\"\n", .{config.executable_name});
-    } else {
-        try writer.print("Exec={s}\n", .{config.executable_name});
-    }
-    try writer.print("StartupWMClass={s}\n", .{config.executable_name});
-    if (has_icon) try writer.print("Icon={s}\n", .{config.executable_name});
-    if (config.categories) |categories| {
-        if (categories.len > 0) {
-            try writer.print("Categories={s}", .{categories});
-            if (categories[categories.len - 1] != ';') try writer.writeByte(';');
-            try writer.writeByte('\n');
-        }
-    }
-    try writer.print("Name={s}\n", .{config.name});
-    try writer.writeAll("Terminal=false\n");
-    try writer.writeAll("Type=Application\n");
-
-    return allocating.toOwnedSlice();
+    return desktop_entry.render(allocator, .{
+        .name = config.name,
+        .executable_name = config.executable_name,
+        .description = config.description,
+        .categories = config.categories,
+        .has_icon = has_icon,
+    });
 }
 
 fn writeDecimalField(field: []u8, value: u64) void {

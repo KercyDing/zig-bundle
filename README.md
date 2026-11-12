@@ -17,11 +17,13 @@ reimplemented in Zig and designed around `std.Build`.
 | `tar_gz` | `<prefix>/bundle/tar_gz/<name>-<version>-<arch>-<os>.tar.gz` |
 | `deb` | `<prefix>/bundle/deb/<name>_<version>_<deb-arch>.deb` |
 | `rpm` | `<prefix>/bundle/rpm/<name>-<version>-<release>.<rpm-arch>.rpm` |
+| `appimage` | `<prefix>/bundle/appimage/<name>-<version>-<arch>.AppImage` |
 | `setup_exe` | `<prefix>/bundle/setup_exe/<name>_<version>_<arch>-setup.exe` |
 
 Archives contain the executable and configured resources at the archive root.
 Timestamps are fixed so repeated builds produce identical archives.
 `deb` and `rpm` require a Linux target and are generated natively without external tools.
+`appimage` requires a Linux host and target and invokes `appimagetool`.
 `setup_exe` requires a Windows target and embeds a Zig-native installer runtime.
 Format/host/target compatibility is validated while configuring the bundle, before any build steps run.
 `<prefix>` is the Zig install prefix, which defaults to `zig-out` (override with `zig build --prefix <path>`).
@@ -59,6 +61,7 @@ pub fn build(b: *std.Build) void {
         .tar_gz => .{ .tar_gz = .{} },
         .deb => .{ .deb = .{} },
         .rpm => .{ .rpm = .{} },
+        .appimage => .{ .appimage = .{} },
         .setup_exe => .{ .setup_exe = .{
             .install_scope = .current_user,
             .shortcuts = .{ .start_menu = true, .desktop = true },
@@ -101,6 +104,7 @@ Select the format with `-Dformat`; the default is `zip`:
 zig build bundle
 zig build bundle -Dformat=deb -Dtarget=x86_64-linux-gnu
 zig build bundle -Dformat=rpm -Dtarget=x86_64-linux-gnu
+zig build bundle -Dformat=appimage -Dtarget=x86_64-linux-gnu
 zig build bundle -Dformat=setup_exe -Dtarget=x86_64-windows-gnu
 ```
 
@@ -177,6 +181,18 @@ gzip-compressed automatically. Dependencies accept `name`, `name = version`,
 and comparison operators. `maintainer_scripts` installs `preinst`, `postinst`,
 `prerm`, and `postrm` as RPM scriptlets and adds the `/bin/sh` requirement.
 
+AppImage generates an AppDir and invokes `appimagetool`:
+
+```zig
+.appimage = .{
+    // Defaults to searching PATH.
+    .tool = "/path/to/appimagetool",
+},
+```
+
+The tool must be executable; AppImages distributed without FUSE are handled by
+setting `APPIMAGE_EXTRACT_AND_RUN=1` for the child process.
+
 Set top-level `.enable_llvm_strip = true` to strip the bundled executable with
 the system `llvm-strip` for every format; the build fails with an installation
 hint when the tool is not on `PATH`.
@@ -209,5 +225,6 @@ only example zip
 only example tar_gz
 only example deb
 only example rpm
+only example appimage
 only example setup_exe
 ```

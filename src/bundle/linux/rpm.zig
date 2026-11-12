@@ -2,6 +2,7 @@
 const std = @import("std");
 
 const deb = @import("deb.zig");
+const desktop = @import("../common/desktop.zig");
 const icons = @import("../common/icons.zig");
 const resources = @import("../common/resources.zig");
 const tar_gz = @import("../common/tar_gz.zig");
@@ -205,33 +206,13 @@ pub fn bundle(
 }
 
 fn renderDesktop(allocator: std.mem.Allocator, config: Config) ![]u8 {
-    var allocating: std.Io.Writer.Allocating = .init(allocator);
-    errdefer allocating.deinit();
-    const writer = &allocating.writer;
-
-    try writer.writeAll("[Desktop Entry]\n");
-    if (config.description) |description| {
-        const comment = firstLine(description);
-        if (comment.len > 0) try writer.print("Comment={s}\n", .{comment});
-    }
-    if (std.mem.indexOfAny(u8, config.executable_name, " \t") != null) {
-        try writer.print("Exec=\"{s}\"\n", .{config.executable_name});
-    } else {
-        try writer.print("Exec={s}\n", .{config.executable_name});
-    }
-    try writer.print("StartupWMClass={s}\n", .{config.executable_name});
-    if (config.icons.len > 0) try writer.print("Icon={s}\n", .{config.executable_name});
-    if (config.categories) |categories| {
-        if (categories.len > 0) {
-            try writer.print("Categories={s}", .{categories});
-            if (categories[categories.len - 1] != ';') try writer.writeByte(';');
-            try writer.writeByte('\n');
-        }
-    }
-    try writer.print("Name={s}\n", .{config.name});
-    try writer.writeAll("Terminal=false\nType=Application\n");
-
-    return allocating.toOwnedSlice();
+    return desktop.render(allocator, .{
+        .name = config.name,
+        .executable_name = config.executable_name,
+        .description = config.description,
+        .categories = config.categories,
+        .has_icon = config.icons.len > 0,
+    });
 }
 
 fn normalizeAssetDestination(allocator: std.mem.Allocator, dest: []const u8) ![]const u8 {

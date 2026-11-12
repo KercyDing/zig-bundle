@@ -9,6 +9,7 @@
 //! b.step("bundle", "Bundle application").dependOn(&bundled.step);
 //! ```
 
+const appimage = @import("bundle/linux/appimage.zig");
 const bundle = @import("bundle.zig");
 const capabilities = @import("capabilities.zig");
 const deb = @import("bundle/linux/deb.zig");
@@ -22,6 +23,8 @@ const zip = @import("bundle/common/zip.zig");
 
 /// Application metadata shared by every output format.
 pub const App = settings.App;
+/// AppImage options.
+pub const AppImageOptions = settings.AppImageOptions;
 /// Additional file installed by a Debian package.
 pub const Asset = settings.Asset;
 /// Compression algorithm used for ZIP entries.
@@ -62,6 +65,7 @@ test {
     std.testing.refAllDecls(resources);
     std.testing.refAllDecls(rpm);
     std.testing.refAllDecls(settings);
+    std.testing.refAllDecls(appimage);
     std.testing.refAllDecls(setup_exe);
     std.testing.refAllDecls(step);
     std.testing.refAllDecls(tar_gz);
