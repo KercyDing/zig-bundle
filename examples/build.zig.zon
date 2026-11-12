@@ -8,8 +8,8 @@
             .path = "../",
         },
         .nanoui = .{
-            .url = "git+https://github.com/justrach/nanoui?ref=main#66d1d8a44268d96f18081c062b0c8565dd0983f7",
-            .hash = "nanoui-0.14.0-we0KMVUDPAAsG1gOF9Uuf0fvrQWLW07Z1MdQ8pWRrIVY",
+            .url = "git+https://github.com/justrach/nanoui?ref=v0.14.1#8168b777985b37779fc0e333e1291138aa9bc882",
+            .hash = "nanoui-0.14.1-we0KMY_6PAD3bI7Txflz4lAApWxrZ8u_SihdfmO302IL",
         },
     },
     .paths = .{
