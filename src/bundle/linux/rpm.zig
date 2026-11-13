@@ -858,7 +858,8 @@ fn buildHeader(
     try builder.addInt32(1037, file_flags.items);
     try builder.addStrings(1039, file_users.items);
     try builder.addStrings(1040, file_groups.items);
-    try builder.addString(1044, "(none)");
+    const source_rpm = try std.fmt.allocPrint(allocator, "{s}-{s}-{s}.src.rpm", .{ package, config.version, release });
+    try builder.addString(1044, source_rpm);
     try builder.addInt32(1045, file_verify_flags.items);
     try builder.addStrings(1047, try dependencyNames(deps.provides, allocator));
     try builder.addInt32(1048, try dependencyFlags(deps.requires, allocator));
@@ -868,6 +869,10 @@ fn buildHeader(
     try builder.addStrings(1054, try dependencyNames(deps.conflicts, allocator));
     try builder.addStrings(1055, try dependencyVersions(deps.conflicts, allocator));
     try builder.addString(1064, "4.16.0");
+    try builder.addInt32(1080, &.{mtime});
+    try builder.addStrings(1081, &.{config.packager orelse package});
+    const changelog_text = try std.fmt.allocPrint(allocator, "- Release {s}-{s}.", .{ config.version, release });
+    try builder.addStrings(1082, &.{changelog_text});
     try builder.addStrings(1090, try dependencyNames(deps.obsoletes, allocator));
     try builder.addInt32(1095, file_devices.items);
     try builder.addInt32(1096, file_inodes.items);
