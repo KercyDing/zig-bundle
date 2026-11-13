@@ -82,11 +82,10 @@ pub fn main(init: std.process.Init) !void {
 
 fn listArtifacts(io: std.Io, allocator: std.mem.Allocator, prefix: []const u8, path: []const u8) !void {
     const cwd = try std.process.currentPathAlloc(io, allocator);
-    const clean_prefix = if (std.mem.startsWith(u8, prefix, "./")) prefix[2..] else prefix;
-    const root = if (std.Io.Dir.path.isAbsolute(clean_prefix))
-        clean_prefix
-    else
-        try std.Io.Dir.path.join(allocator, &.{ cwd, clean_prefix });
+    // The build runner prefixes relative path args with "./", and the install
+    // prefix may already be cwd-relative, so the argument can be "././zig-out".
+    // `join` keeps those components; `resolveAlloc` collapses them.
+    const root = try std.Io.Dir.path.resolveAlloc(allocator, &.{ cwd, prefix });
     const bytes = try std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(16 * 1024 * 1024));
     var stdout_buffer: [16 * 1024]u8 = undefined;
     var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
