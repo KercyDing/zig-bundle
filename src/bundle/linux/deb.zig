@@ -158,7 +158,7 @@ pub fn bundle(
     const doc_dir = try std.fmt.allocPrint(allocator, "usr/share/doc/{s}", .{package});
 
     const license_text = try loadLicense(io, allocator, config);
-    const copyright = try renderCopyright(allocator, config, package, maintainer, config.mtime, license_text);
+    const copyright = try renderCopyright(allocator, config, maintainer, config.mtime, license_text);
     try data_items.append(allocator, .{
         .path = try std.fmt.allocPrint(allocator, "{s}/copyright", .{doc_dir}),
         .kind = .file,
@@ -652,7 +652,6 @@ fn writeRfc2822(writer: *Io.Writer, timestamp: u64) !void {
 fn renderCopyright(
     allocator: std.mem.Allocator,
     config: Config,
-    package: []const u8,
     maintainer: []const u8,
     timestamp: u64,
     license_text: ?[]const u8,
@@ -664,21 +663,35 @@ fn renderCopyright(
     const seconds: std.time.epoch.EpochSeconds = .{ .secs = timestamp };
     const year = seconds.getEpochDay().calculateYearDay().year;
 
-    try writer.print("Package: {s}\n", .{package});
+    try writer.writeAll("Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/\n");
     try writer.print("Upstream-Name: {s}\n", .{config.name});
     try writer.print("Upstream-Contact: {s}\n", .{maintainer});
+    if (config.options.homepage) |homepage| {
+        if (homepage.len > 0) try writer.print("Source: {s}\n", .{homepage});
+    }
+    try writer.writeByte('\n');
+    try writer.writeAll("Files: *\n");
+    try writer.writeAll("Copyright: ");
     if (config.copyright) |notice| {
         try writer.print("{s}\n", .{notice});
     } else {
-        try writer.print("Copyright {d} {s}\n", .{ year, maintainer });
+        try writer.print("{d} {s}\n", .{ year, maintainer });
     }
     try writer.print("License: {s}\n", .{config.license orelse "not specified"});
 
     if (license_text) |text| {
-        if (text.len > 0) {
-            try writer.writeByte('\n');
-            try writer.writeAll(text);
-            if (text[text.len - 1] != '\n') try writer.writeByte('\n');
+        const trimmed = std.mem.trimEnd(u8, text, "\r\n");
+        if (trimmed.len > 0) {
+            var lines = std.mem.splitScalar(u8, trimmed, '\n');
+            while (lines.next()) |line| {
+                // DEP-5 continuation lines are indented; blank lines become
+                // a single dot so parsers do not end the license paragraph.
+                if (line.len == 0) {
+                    try writer.writeAll(" .\n");
+                } else {
+                    try writer.print(" {s}\n", .{line});
+                }
+            }
         }
     }
 
