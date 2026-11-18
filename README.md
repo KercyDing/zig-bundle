@@ -299,6 +299,11 @@ It supports NSIS silent mode and a custom directory as the last argument:
 MyApp-setup.exe /S /D=C:\Program Files\MyApp
 ```
 
+Before installing or uninstalling, setup checks whether the main executable in
+the target directory is in use. If it is, exit the application completely and
+click **Retry**. In silent mode, setup exits with code `2` and uninstall leaves
+the installation in place when the executable is in use.
+
 The installer:
 
 - installs under `%LOCALAPPDATA%\Programs\<name>` for the current user, or the

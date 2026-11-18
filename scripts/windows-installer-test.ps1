@@ -16,16 +16,14 @@ function Assert-True([bool] $Condition, [string] $Message) {
     }
 }
 
-function Invoke-Installer([string] $Path, [string[]] $Arguments) {
+function Invoke-Installer([string] $Path, [string[]] $Arguments, [int] $ExpectedExitCode = 0) {
     Assert-True (Test-Path -LiteralPath $Path) "missing installer: $Path"
     $process = Start-Process -FilePath $Path -ArgumentList $Arguments -Wait -PassThru -NoNewWindow
-    Assert-True ($process.ExitCode -eq 0) "installer failed with exit code $($process.ExitCode): $Path $Arguments"
+    Assert-True ($process.ExitCode -eq $ExpectedExitCode) "expected exit code $ExpectedExitCode, got $($process.ExitCode): $Path $Arguments"
 }
 
 function Invoke-Setup([string] $Path, [string] $Directory) {
-    Assert-True (Test-Path -LiteralPath $Path) "missing installer: $Path"
-    $process = Start-Process -FilePath $Path -ArgumentList "/S /D=$Directory" -Wait -PassThru -NoNewWindow
-    Assert-True ($process.ExitCode -eq 0) "installer failed with exit code $($process.ExitCode): $Path"
+    Invoke-Installer $Path @("/S /D=$Directory")
 }
 
 function Wait-For([scriptblock] $Condition, [string] $Description, [int] $TimeoutSeconds = 30) {
@@ -66,7 +64,7 @@ $registry = Get-ItemProperty -LiteralPath $registryKey
 Assert-True ($registry.DisplayVersion -eq '0.1.0') "unexpected DisplayVersion: $($registry.DisplayVersion)"
 Assert-True (Test-Path -LiteralPath $registry.InstallLocation) "InstallLocation does not exist: $($registry.InstallLocation)"
 
-# Run the installed application with closed stdin.
+# Keep the installed application running while testing silent upgrade and uninstall.
 $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
 $startInfo.FileName = $installedExe
 $startInfo.WorkingDirectory = $installDir
@@ -75,10 +73,20 @@ $startInfo.RedirectStandardInput = $true
 $startInfo.RedirectStandardOutput = $true
 $startInfo.RedirectStandardError = $true
 $app = [System.Diagnostics.Process]::Start($startInfo)
-$app.StandardInput.Close()
-if (-not $app.WaitForExit(10000)) {
-    $app.Kill()
-    throw 'installed application did not exit within 10 seconds'
+try {
+    Assert-True (-not $app.HasExited) 'installed application exited before the in-use checks'
+    Invoke-Installer $v2 @("/S /D=$installDir") 2
+    # Run the uninstaller directly so its exit code reaches the test.
+    Invoke-Installer $uninstaller @("/S _?=$installDir") 2
+    Assert-True (-not $app.HasExited) 'silent installer or uninstaller closed the application'
+    Assert-True ((Get-ItemProperty -LiteralPath $registryKey).DisplayVersion -eq '0.1.0') 'blocked upgrade or uninstall changed the registry entry'
+    Assert-True (Test-Path -LiteralPath $uninstaller) 'blocked uninstall removed the uninstaller'
+} finally {
+    $app.StandardInput.Close()
+    if (-not $app.WaitForExit(10000)) {
+        $app.Kill()
+        throw 'installed application did not exit within 10 seconds'
+    }
 }
 Assert-True ($app.ExitCode -eq 0) "installed application exited with $($app.ExitCode)"
 

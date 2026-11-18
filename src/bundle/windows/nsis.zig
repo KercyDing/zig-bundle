@@ -207,7 +207,13 @@ fn renderScript(allocator: std.mem.Allocator, config: Config, icon_name: []const
     }
     try writer.writeByte('\n');
 
+    try writer.writeAll("!macro DefineRunningAppCheck functionName\n  Function ${functionName}\n    StrCpy $1 \"$INSTDIR\\");
+    try writeEscaped(writer, config.executable_name);
+    try writer.writeAll("\"\n");
+    try writer.writeAll(running_app_check);
+
     try writer.writeAll("Section \"Install\"\n");
+    try writer.writeAll("  Call CheckRunningApp\n");
     try writer.print("  SetShellVarContext {s}\n", .{shell_context});
     try writer.writeAll("  SetOutPath \"$INSTDIR\"\n  File /r \"payload\\*.*\"\n");
     try writer.writeAll("  WriteUninstaller \"$INSTDIR\\uninstall.exe\"\n");
@@ -263,6 +269,7 @@ fn renderScript(allocator: std.mem.Allocator, config: Config, icon_name: []const
     try writer.writeAll("SectionEnd\n\n");
 
     try writer.writeAll("Section \"Uninstall\"\n");
+    try writer.writeAll("  Call un.CheckRunningApp\n");
     try writer.print("  SetShellVarContext {s}\n", .{shell_context});
     try writer.writeAll("  Delete \"$SMPROGRAMS\\");
     try writeEscaped(writer, config.name);
@@ -321,6 +328,43 @@ fn renderScript(allocator: std.mem.Allocator, config: Config, icon_name: []const
 
     return allocating.toOwnedSlice();
 }
+
+const running_app_check =
+    \\  check:
+    \\    IfFileExists "$1" 0 done
+    \\    System::Call 'Rstrtmgr::RmStartSession(*i .r2, i 0, w) i .r0'
+    \\    StrCmp $0 0 0 check_failed
+    \\    System::Call 'Rstrtmgr::RmRegisterResources(i r2, i 1, *w r1, i 0, p 0, i 0, p 0) i .r0'
+    \\    StrCmp $0 0 0 session_failed
+    \\    ; Zero capacity: ERROR_MORE_DATA (234) means there are affected processes.
+    \\    System::Call 'Rstrtmgr::RmGetList(i r2, *i, *i 0, p 0, *i .r3) i .r0'
+    \\    StrCmp $0 234 in_use
+    \\    StrCmp $0 0 0 session_failed
+    \\    StrCmp $3 0 session_done
+    \\  in_use:
+    \\    System::Call 'Rstrtmgr::RmEndSession(i r2)'
+    \\    IfSilent cancel
+    \\    MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "$1 is in use.$\r$\nExit the application completely, then try again." IDRETRY check
+    \\  cancel:
+    \\    SetErrorLevel 2
+    \\    Abort "Setup stopped because the application is in use: $1"
+    \\  session_failed:
+    \\    System::Call 'Rstrtmgr::RmEndSession(i r2)'
+    \\  check_failed:
+    \\    IfSilent +2
+    \\    MessageBox MB_OK|MB_ICONSTOP "Setup could not check if $1 is in use (Restart Manager status $0)."
+    \\    SetErrorLevel 2
+    \\    Abort "Restart Manager could not check $1 (status $0)."
+    \\  session_done:
+    \\    System::Call 'Rstrtmgr::RmEndSession(i r2)'
+    \\  done:
+    \\  FunctionEnd
+    \\!macroend
+    \\!insertmacro DefineRunningAppCheck CheckRunningApp
+    \\!insertmacro DefineRunningAppCheck un.CheckRunningApp
+    \\
+    \\
+;
 
 fn versionInfo(allocator: std.mem.Allocator, version: []const u8) ?[]const u8 {
     const parsed = std.SemanticVersion.parse(version) catch return null;
