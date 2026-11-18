@@ -35,7 +35,7 @@ They do not implicitly include a `.app`.
 Pin a release:
 
 ```bash
-zig fetch --save=bundle git+https://github.com/KercyDing/zig-bundle#v0.1.4
+zig fetch --save=bundle git+https://github.com/KercyDing/zig-bundle#v0.1.5
 ```
 
 Track `main` for the latest changes; it may contain breaking changes:
